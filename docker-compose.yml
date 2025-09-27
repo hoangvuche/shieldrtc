@@ -1,0 +1,60 @@
+version: "3.9"
+services:
+  portal:
+    build: ./app_shieldrtc_portal
+    container_name: app_shieldrtc_portal
+    env_file: .env
+    environment:
+      - APP_URL=${APP_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+    volumes:
+      - ./app_shieldrtc_portal/html:/var/www/html
+      - ./app_shieldrtc_portal/storage:/var/www/storage
+    ports:
+      - "8080:80"
+    networks:
+      - app_net
+
+  signal:
+    build: ./shieldrtc_signal
+    container_name: shieldrtc_signal
+    env_file: .env
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    ports:
+      - "8081:8081"
+      - "8082:8082"  # HTTP healthz
+    networks:
+      - app_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: shieldrtc_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - app_net
+
+  nginx:
+    image: nginx:alpine
+    container_name: shieldrtc_nginx
+    depends_on:
+      - portal
+      - signal
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    ports:
+      - "8088:80"
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    driver: bridge

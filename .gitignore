@@ -1,0 +1,10 @@
+# Dependencies / build
+node_modules/
+vendor/
+.env
+.env.*
+dist/
+build/
+.DS_Store
+*.log
+storage/logs/*
