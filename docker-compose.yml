@@ -1,60 +1,212 @@
-version: "3.9"
-services:
-  portal:
-    build: ./app_shieldrtc_portal
-    container_name: app_shieldrtc_portal
-    env_file: .env
-    environment:
-      - APP_URL=${APP_URL}
-      - JWT_SECRET=${JWT_SECRET}
-      - LIVEKIT_URL=${LIVEKIT_URL}
-      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
-      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
-    volumes:
-      - ./app_shieldrtc_portal/html:/var/www/html
-      - ./app_shieldrtc_portal/storage:/var/www/storage
-    ports:
-      - "8080:80"
-    networks:
-      - app_net
+# version: '3.8'
 
-  signal:
-    build: ./shieldrtc_signal
-    container_name: shieldrtc_signal
-    env_file: .env
+services:
+  mailer-worker-corehr:
+    build: ./mailer-worker
+    container_name: mailer-worker-corehr_app
     environment:
-      - JWT_SECRET=${JWT_SECRET}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    depends_on:
-      - redis
-    ports:
-      - "8081:8081"
-      - "8082:8082"  # HTTP healthz
-    networks:
-      - app_net
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      REDIS_PASSWORD: "${REDIS_PASSWORD}"
+      QUEUE_PREFIX: "corehr"  # trùng với app_corehr
+      # --- SMTP (SES) ---
+      SMTP_HOST: "email-smtp.ap-southeast-1.amazonaws.com"
+      SMTP_PORT: "587"               # 587(TLS) hoặc 465(SSL)
+      SMTP_SECURE: "tls"             # hoặc "ssl" nếu dùng 465
+      SMTP_USERNAME: "${COREHR_SES_SMTP_USERNAME}"
+      SMTP_PASSWORD: "${COREHR_SES_SMTP_PASSWORD}"
+      SMTP_FROM: "support@corehr.tech"   # địa chỉ đã verify
+      SMTP_FROM_NAME: "CoreHR"
+      # Giới hạn
+      RATE_MAX_PER_SEC: "14"
+      RATE_BURST: "28"
+      DAILY_MAX: "50000"             # giới hạn bảo thủ (xem lưu ý bên dưới)
+    depends_on: [redis]
+    networks: [app_net]
+    restart: always
 
   redis:
     image: redis:7-alpine
-    container_name: shieldrtc_redis
-    ports:
-      - "6379:6379"
+    container_name: redis_app
+    command: ["redis-server","--appendonly","yes","--requirepass","${REDIS_PASSWORD}"]
+    volumes:
+      - redis-data:/data
     networks:
-      - app_net
+      app_net:
+        aliases:
+          - redis
+    restart: always
 
   nginx:
-    image: nginx:alpine
-    container_name: shieldrtc_nginx
-    depends_on:
-      - portal
-      - signal
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    image: nginx:1.25.3
+    container_name: nginx_proxy
     ports:
-      - "8088:80"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/html:/var/www/html:ro
+      - ./nginx/proxy_params:/etc/nginx/proxy_params:ro
+    depends_on:
+      - corehr
+      - plusdebt
+      - shieldrtc
+    networks: [app_net]
+    restart: unless-stopped
+
+  corehr:
+    build: ./app_corehr
+    container_name: corehr_app
+    volumes:
+      - ./app_corehr/html:/var/www/html
+    expose:
+      - "80"
+      - "8080"
+    restart: unless-stopped
+    networks: [app_net]    # thêm dòng này (nếu chưa có)
+    environment:
+      # thêm 2 biến này (giữ nguyên những biến bạn đang có)
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      QUEUE_PREFIX: "corehr"
+    depends_on:
+      - redis      # tùy chọn: đảm bảo Redis sẵn sàng trước khi app start
+
+  shieldrtc:
+    build: ./app_shieldrtc
+    container_name: shieldrtc_app
+    volumes:
+      - ./app_shieldrtc/html:/var/www/html
+    expose:
+      - "80"
+      - "8080"
+    restart: unless-stopped
+    networks: [app_net]
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      QUEUE_PREFIX: "shieldrtc"
+    depends_on:
+      - redis
+
+  app_shieldrtc_portal:
+    build: ./app_shieldrtc_portal
+    container_name: shieldrtc_portal_app
+    volumes:
+      - ./app_shieldrtc_portal/html:/var/www/html
+    expose:
+      - "80"      # HTTP
+      - "9001"    # WS riêng của portal
+    restart: unless-stopped
+    networks: [app_net]
+    environment:
+      APP_URL: "https://app.shieldrtc.com"
+      WS_PORT: "9001"                         # port WS nội bộ container
+      WS_PUBLIC_URL: "wss://app.shieldrtc.com/ws"
+
+      DB_HOST: "db"
+      DB_PORT: "3306"
+      DB_DATABASE: "shieldrtc"
+      DB_USERNAME: "shieldrtc"
+      DB_PASSWORD: "${DB_PASSWORD}"
+
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      QUEUE_PREFIX: "shieldrtc:portal"
+      TZ: "Asia/Ho_Chi_Minh"
+
+      LIVEKIT_URL: ${LIVEKIT_URL}
+      LIVEKIT_HTTP_URL: ${LIVEKIT_HTTP_URL}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  app_shieldrtc_signaling1:
+    build: ./app_shieldrtc_signaling
+    container_name: shieldrtc_signaling_app1
+    command: ["sh", "-c", "npm run build && npm start"]
+#    command: ["npm", "run", "start"]   # hoặc "npm run dev" nếu dùng ts-node
+#    volumes:
+#      - ./app_shieldrtc_signaling:/usr/src/app
+    expose:
+      - "8081"
+    restart: unless-stopped
+    networks: [app_net]
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      WS_PORT: "8081"
+      QUEUE_PREFIX: "shieldrtc:signaling"
+    depends_on:
+      - redis
+
+  app_shieldrtc_signaling2:
+    build: ./app_shieldrtc_signaling
+    container_name: shieldrtc_signaling_app2
+    command: ["sh", "-c", "npm run build && npm start"]
+#    command: ["npm", "run", "start"]   # hoặc "npm run dev" nếu dùng ts-node
+#    volumes:
+#      - ./app_shieldrtc_signaling:/usr/src/app
+    expose:
+      - "8081"
+    restart: unless-stopped
+    networks: [app_net]
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      WS_PORT: "8081"
+      QUEUE_PREFIX: "shieldrtc:signaling"
+    depends_on:
+      - redis
+
+  livekit:
+    image: livekit/livekit-server:v1.9.1
+    container_name: shieldrtc_livekit
+    command: >
+      --config /etc/livekit.yaml
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    environment:
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - "LIVEKIT_KEYS=shieldrtc_dev: 423796d58c14e3950a2f0a521603b26357f72a2e453a87e26aa43c780b046503"
     networks:
       - app_net
+    restart: unless-stopped
+
+  coturn:
+    image: coturn/coturn:4.7.0-r1
+    container_name: shieldrtc_coturn
+    user: "0:0"
+    command: >
+      -c /etc/turnserver.conf
+      --no-cli
+    volumes:
+      - ./coturn/turnserver.conf:/etc/turnserver.conf:ro
+      - /etc/letsencrypt/live/rtc.shieldrtc.com/fullchain.pem:/etc/coturn/fullchain.pem:ro
+      - /etc/letsencrypt/live/rtc.shieldrtc.com/privkey.pem:/etc/coturn/privkey.pem:ro
+    ports:
+      - "3478:3478/udp"
+      - "5349:5349/tcp"   # TLS cho TURN
+    networks:
+      - app_net
+    restart: unless-stopped
+
+  plusdebt:
+    build: ./app_plusdebt
+    container_name: plusdebt_app
+    volumes:
+      - ./app_plusdebt/html:/var/www/html
+    expose:
+      - "80"
+      - "8080"
+    restart: unless-stopped
+    networks: [app_net]
 
 networks:
-  app_net:
-    driver: bridge
+  app_net: {}
+
+volumes:
+  redis-data: {}

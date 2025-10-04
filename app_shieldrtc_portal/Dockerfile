@@ -1,18 +1,37 @@
 FROM php:8.2-apache
 
-RUN apt-get update && apt-get install -y git unzip libzip-dev         && docker-php-ext-install zip
+ARG APP_DIR=/var/www/html
 
-# Enable Apache mods
-RUN a2enmod rewrite headers
+# Sys packages + PHP extensions
+RUN apt-get update && apt-get install -y \
+      libzip-dev libicu-dev libpng-dev libjpeg-dev libfreetype6-dev \
+      git unzip cron supervisor \
+  && docker-php-ext-configure gd --with-freetype --with-jpeg \
+  && docker-php-ext-install -j"$(nproc)" pdo_mysql intl gd zip bcmath sockets opcache \
+  && a2enmod rewrite headers proxy proxy_wstunnel deflate expires \
+  && rm -rf /var/lib/apt/lists/*
 
-# Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# PHP config
+COPY config/php.ini                   /usr/local/etc/php/php.ini
+COPY config/opcache.ini               /usr/local/etc/php/conf.d/opcache.ini
+COPY config/timezone.ini              /usr/local/etc/php/conf.d/timezone.ini
 
-WORKDIR /var/www
-RUN mkdir -p /var/www/html /var/www/storage/logs && chown -R www-data:www-data /var/www
+# Apache config
+COPY apache/vhost.conf                /etc/apache2/sites-available/000-default.conf
+COPY apache/security-global.conf      /etc/apache2/conf-available/security-global.conf
+RUN a2enconf security-global
+COPY apache/headers-portal.conf       /etc/apache2/conf-available/headers-portal.conf
 
-COPY html/ /var/www/html/
+# App code
+WORKDIR ${APP_DIR}
+COPY html/ ${APP_DIR}/
 
-# Set DocumentRoot
-RUN sed -i 's#DocumentRoot /var/www/html#DocumentRoot /var/www/html#' /etc/apache2/sites-available/000-default.conf
-RUN sed -i '/DocumentRoot/a <Directory /var/www/html>\nAllowOverride All\nRequire all granted\n</Directory>' /etc/apache2/sites-available/000-default.conf
+# Runtime helpers
+COPY cron/ /app/cron/
+COPY logrotate/ /app/logrotate/
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY start.sh /start.sh
+RUN chmod +x /start.sh && mkdir -p /var/log/supervisor
+
+EXPOSE 80
+CMD ["/start.sh"]

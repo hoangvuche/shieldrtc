@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LiveKit Demo</title>
+  <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
+  <style>
+    video {
+      width: 300px;
+      height: 200px;
+      margin: 5px;
+      background: black;
+    }
+  </style>
+</head>
+<body>
+  <h2>LiveKit Test</h2>
+
+  <!-- Form login -->
+  <input type="text" id="username" placeholder="Username">
+  <input type="password" id="password" placeholder="Password">
+  <button id="loginBtn">Login</button>
+  <br><br>
+
+  <!-- Create room -->
+  <button id="createRoomBtn" disabled>Create Room</button>
+  <div>Created Room ID: <span id="createdRoomId"></span></div>
+  <br>
+
+  <!-- Join room -->
+  <input type="text" id="roomId" placeholder="Enter Room ID">
+  <button id="joinBtn" disabled>Join Room</button>
+  <button id="endBtn" disabled style="color: red;">End Call</button>
+
+  <h3>Videos</h3>
+  <div id="videos"></div>
+
+<script>
+const LOGIN_URL = "https://app.shieldrtc.com/api/login";
+const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
+const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
+
+let SIGNAL_JWT = null;
+let currentRoom = null;   // giữ instance room để disconnect
+
+// Đăng nhập
+document.getElementById("loginBtn").onclick = async () => {
+  try {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    const res = await fetch(LOGIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
+
+    const data = await res.json();
+    if (data.signal_jwt) {
+      SIGNAL_JWT = data.signal_jwt;
+      document.getElementById("createRoomBtn").disabled = false;
+      document.getElementById("joinBtn").disabled = false;
+      alert("Login success! You can now create or join a room.");
+    } else {
+      alert("Login failed: " + JSON.stringify(data));
+    }
+  } catch (err) {
+    console.error("Login error:", err);
+  }
+};
+
+// Tạo phòng
+document.getElementById("createRoomBtn").onclick = async () => {
+  try {
+    const res = await fetch(CREATE_ROOM_URL, {
+      method: "POST",
+      headers: { 
+        "Authorization": "Bearer " + SIGNAL_JWT,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ title: "Test Room" })
+    });
+    const data = await res.json();
+
+    if (data.room_id) {
+      document.getElementById("createdRoomId").innerText = data.room_id;
+      document.getElementById("roomId").value = data.room_id;
+    } else {
+      alert("Create room failed: " + JSON.stringify(data));
+    }
+  } catch (err) {
+    console.error("Create room error:", err);
+  }
+};
+
+// Join phòng
+document.getElementById("joinBtn").onclick = async () => {
+  try {
+    const roomId = document.getElementById("roomId").value.trim();
+    if (!roomId) {
+      alert("Please enter a room ID first!");
+      return;
+    }
+
+    // 1. Xin LiveKit token
+    const res = await fetch(PORTAL_URL, {
+      method: "POST",
+      headers: { 
+        "Authorization": "Bearer " + SIGNAL_JWT,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ room: roomId })
+    });
+    const data = await res.json();
+
+    // 2. Tạo Room instance
+    const room = new LivekitClient.Room();
+    currentRoom = room; // lưu để end call
+
+    // Khi mất kết nối (host xóa phòng, bị kick, lỗi unrecoverable...)
+    room.on('disconnected', (reason) => {
+      console.log("Disconnected reason:", reason);
+      // Xoá toàn bộ video UI
+      document.getElementById('videos').innerHTML = '';
+      document.getElementById('endBtn').disabled = true;
+
+      if (reason === 'ROOM_DELETED') {
+        alert("Host ended the room.");
+      } else {
+        alert("You were disconnected: " + reason);
+      }
+    });
+
+    // 3. Event: khi có track remote
+    room.on('trackSubscribed', (track, publication, participant) => {
+      if (track.kind === 'video' || track.kind === 'audio') {
+        const el = track.attach();
+        el.dataset.participant = participant.sid;
+        document.getElementById('videos').appendChild(el);
+      }
+    });
+
+    // Participant leave → gỡ video element
+    room.on('participantDisconnected', (participant) => {
+      document.querySelectorAll(`[data-participant="${participant.sid}"]`)
+        .forEach(el => el.remove());
+    });
+
+    // 4. Connect LiveKit
+    await room.connect(data.livekit_url, data.livekit_jwt);
+
+    // 5. Publish local tracks
+    const localTracks = await LivekitClient.createLocalTracks({ audio: true, video: true });
+    for (const track of localTracks) {
+      await room.localParticipant.publishTrack(track);
+      const el = track.attach();
+      el.dataset.participant = room.localParticipant.sid;
+      document.getElementById('videos').appendChild(el);
+    }
+
+    document.getElementById("endBtn").disabled = false;
+    console.log("Connected to room:", room.name);
+  } catch (err) {
+    console.error("Join failed:", err);
+  }
+};
+
+// End call
+document.getElementById("endBtn").onclick = async () => {
+  const roomId = document.getElementById("roomId").value.trim();
+  if (!roomId) { alert("Missing room id"); return; }
+
+  try {
+    // YÊU CẦU backend đóng phòng (nếu không phải host, backend trả 403)
+    const res = await fetch("https://app.shieldrtc.com/api/rooms/end", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + SIGNAL_JWT,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ room_id: roomId })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.warn("End room failed:", err);
+      alert(err.error || "Only host can end this room (or server error).");
+      // Dù không phải host, vẫn cho phép *rời phòng cá nhân*
+    }
+  } catch (e) {
+    console.error("End room error:", e);
+  }
+
+  // Rời phòng local (UI của người khác sẽ được server kick → họ tự nhận 'disconnected')
+  if (currentRoom) {
+    await currentRoom.disconnect();
+    currentRoom = null;
+  }
+  document.getElementById("videos").innerHTML = "";
+  document.getElementById("endBtn").disabled = true;
+};
+</script>
+</body>
+</html>
