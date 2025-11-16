@@ -4,36 +4,102 @@
   <title>LiveKit Demo</title>
   <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
   <style>
+    .main-container {
+      padding: 10px;
+    }
+
+    #createRoomBtn {
+      margin-bottom: 5px;
+    }
+
+    #copyRoom {
+      cursor: pointer;
+    }
+
     video {
       width: 300px;
       height: 200px;
       margin: 5px;
       background: black;
     }
+
+    .section {
+      display: flex;
+      gap: 4px;
+    }
+
+    #createdRoom {
+      align-items: center;
+    }
+
+    #chatBox {
+      width: 610px; 
+      height: 150px; 
+      border: 1px solid #ccc; 
+      padding: 5px; 
+      overflow-y: auto; 
+      margin-bottom: 5px;
+      box-sizing: border-box;
+    }
+
+    #chatInput {
+      width: 520px; 
+      height: 30px;
+    }
+
+    @media screen and (max-width: 640px) {
+      input, button {
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 5px;
+      }
+
+      .section:not(#createdRoom) {
+        width: 100%;
+        flex-direction: column;
+      }
+
+      #chatBox, #chatInput {
+        width: 100%;
+      }
+    }
   </style>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=content_copy" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
-  <h2>LiveKit Test</h2>
+  <div class="main-container">
+    <h2>LiveKit Test</h2>
 
-  <!-- Form login -->
-  <input type="text" id="username" placeholder="Username">
-  <input type="password" id="password" placeholder="Password">
-  <button id="loginBtn">Login</button>
-  <br><br>
+    <!-- Form login -->
+    <div class="section">
+      <input type="text" id="username" placeholder="Username">
+      <input type="password" id="password" placeholder="Password">
+      <button id="loginBtn">Login</button>
+    </div>
+    <br><br>
 
-  <!-- Create room -->
-  <button id="createRoomBtn" disabled>Create Room</button>
-  <div>Created Room ID: <span id="createdRoomId"></span></div>
-  <br>
+    <!-- Create room -->
+    <button id="createRoomBtn" disabled>Create Room</button>
+    <div id="createdRoom" class="section">
+      Created Room ID: <span id="createdRoomId"></span><span id="copyRoom" class="material-symbols-outlined">content_copy</span>
+    </div>
+    <br>
 
-  <!-- Join room -->
-  <input type="text" id="roomId" placeholder="Enter Room ID">
-  <button id="joinBtn" disabled>Join Room</button>
-  <button id="endBtn" disabled style="color: red;">End Call</button>
+    <!-- Join room -->
+    <input type="text" id="roomId" placeholder="Enter Room ID">
+    <button id="joinBtn" disabled>Join Room</button>
+    <button id="endBtn" disabled style="color: red;">End Call</button>
 
-  <h3>Videos</h3>
-  <div id="videos"></div>
+    <h3>Videos</h3>
+    <div id="videos"></div>
 
+    <h3>Chat (ephemeral)</h3>
+    <div id="chatBox">
+    </div>
+    <input type="text" id="chatInput" placeholder="Type a message">
+    <button id="sendChatBtn" disabled>Send</button>
+  </div>
 <script>
 const LOGIN_URL = "https://app.shieldrtc.com/api/login";
 const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
@@ -42,162 +108,307 @@ const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
 let SIGNAL_JWT = null;
 let currentRoom = null;   // giữ instance room để disconnect
 
-// Đăng nhập
-document.getElementById("loginBtn").onclick = async () => {
-  try {
-    const username = document.getElementById("username").value;
-    const password = document.getElementById("password").value;
+// Chat related
+let CHAT_USERNAME = null; // dùng tên đăng nhập để hiển thị
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
-    const res = await fetch(LOGIN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password })
-    });
+function appendChatMessage(sender, message, isLocal) {
+  const box = document.getElementById('chatBox');
+  if (!box) return;
 
-    const data = await res.json();
-    if (data.signal_jwt) {
-      SIGNAL_JWT = data.signal_jwt;
-      document.getElementById("createRoomBtn").disabled = false;
-      document.getElementById("joinBtn").disabled = false;
-      alert("Login success! You can now create or join a room.");
-    } else {
-      alert("Login failed: " + JSON.stringify(data));
-    }
-  } catch (err) {
-    console.error("Login error:", err);
+  const line = document.createElement('div');
+  line.style.marginBottom = '3px';
+
+  if (isLocal) {
+    line.style.textAlign = 'right';
+    line.innerHTML = `<strong>You:</strong> ${escapeHtml(message)}`;
+  } else {
+    line.innerHTML = `<strong>${escapeHtml(sender)}:</strong> ${escapeHtml(message)}`;
   }
-};
 
-// Tạo phòng
-document.getElementById("createRoomBtn").onclick = async () => {
-  try {
-    const res = await fetch(CREATE_ROOM_URL, {
-      method: "POST",
-      headers: { 
-        "Authorization": "Bearer " + SIGNAL_JWT,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ title: "Test Room" })
-    });
-    const data = await res.json();
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
 
-    if (data.room_id) {
-      document.getElementById("createdRoomId").innerText = data.room_id;
-      document.getElementById("roomId").value = data.room_id;
-    } else {
-      alert("Create room failed: " + JSON.stringify(data));
+function resetChatBox() {
+  const box = document.getElementById('chatBox');
+  if (box) box.innerHTML = '';
+}
+
+// Simple escape để tránh chèn HTML trực tiếp
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Đăng nhập
+  document.getElementById("loginBtn").onclick = async () => {
+    try {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+
+      const res = await fetch(LOGIN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+      if (data.signal_jwt) {
+        SIGNAL_JWT = data.signal_jwt;
+        CHAT_USERNAME = username || 'User';
+
+        document.getElementById("createRoomBtn").disabled = false;
+        document.getElementById("joinBtn").disabled = false;
+        alert("Login success! You can now create or join a room.");
+      } else {
+        alert("Login failed: " + JSON.stringify(data));
+      }
+    } catch (err) {
+      console.error("Login error:", err);
     }
-  } catch (err) {
-    console.error("Create room error:", err);
-  }
-};
+  };
 
-// Join phòng
-document.getElementById("joinBtn").onclick = async () => {
-  try {
-    const roomId = document.getElementById("roomId").value.trim();
-    if (!roomId) {
-      alert("Please enter a room ID first!");
+  // Copy Room ID
+  document.getElementById("copyRoom").onclick = () => {
+    const roomId = document.getElementById("createdRoomId").innerText;
+    if (roomId) {
+      navigator.clipboard.writeText(roomId).then(() => {
+        alert("Copied Room ID to clipboard: " + roomId);
+      });
+    }
+  };
+
+  // Gửi chat khi nhấn Enter
+  document.getElementById('chatInput').addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      document.getElementById('sendChatBtn').click();
+    }
+  });
+
+  // Tạo phòng
+  document.getElementById("createRoomBtn").onclick = async () => {
+    try {
+      const res = await fetch(CREATE_ROOM_URL, {
+        method: "POST",
+        headers: { 
+          "Authorization": "Bearer " + SIGNAL_JWT,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ title: "Test Room" })
+      });
+      const data = await res.json();
+
+      if (data.room_id) {
+        document.getElementById("createdRoomId").innerText = data.room_id;
+        document.getElementById("roomId").value = data.room_id;
+      } else {
+        alert("Create room failed: " + JSON.stringify(data));
+      }
+    } catch (err) {
+      console.error("Create room error:", err);
+    }
+  };
+
+  // Join phòng
+  document.getElementById("joinBtn").onclick = async () => {
+    try {
+      const roomId = document.getElementById("roomId").value.trim();
+      if (!roomId) {
+        alert("Please enter a room ID first!");
+        return;
+      }
+
+      // 1. Xin LiveKit token
+      const res = await fetch(PORTAL_URL, {
+        method: "POST",
+        headers: { 
+          "Authorization": "Bearer " + SIGNAL_JWT,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ room: roomId })
+      });
+      const data = await res.json();
+
+      // 2. Tạo Room instance
+      const room = new LivekitClient.Room();
+      currentRoom = room; // lưu để end call
+
+      // Khi mất kết nối (host xóa phòng, bị kick, lỗi unrecoverable...)
+      room.on('disconnected', (reason) => {
+        console.log('[Room disconnected]', {
+          reason,
+          reasonName: LivekitClient.DisconnectReason
+            ? Object.keys(LivekitClient.DisconnectReason)
+                .find(k => LivekitClient.DisconnectReason[k] === reason)
+            : undefined,
+          roomState: room.state,
+        });
+
+        // Xoá toàn bộ video UI
+        document.getElementById('videos').innerHTML = '';
+        document.getElementById('endBtn').disabled = true;
+
+        // Chat: xóa luôn
+        resetChatBox();
+        const sendBtn = document.getElementById("sendChatBtn");
+        if (sendBtn) sendBtn.disabled = true;
+        
+        if (reason === LivekitClient.DisconnectReason.ROOM_DELETED) {
+          alert("Host ended the room.");
+        } else if (reason === LivekitClient.DisconnectReason.DUPLICATE_IDENTITY) {
+          alert("You were disconnected because your identity is used elsewhere.");
+        } else if (reason === LivekitClient.DisconnectReason.JOIN_FAILURE) {
+          alert("Cannot join this room. Please try again.");
+        } else {
+          // UNKNOWN / others → chỉ log, không alert
+          console.warn("Disconnected:", reason);
+        }
+      });
+
+      // 3. Event: khi có track remote
+      room.on('trackSubscribed', (track, publication, participant) => {
+        if (track.kind === 'video' || track.kind === 'audio') {
+          const el = track.attach();
+          el.dataset.participant = participant.sid;
+          document.getElementById('videos').appendChild(el);
+        }
+      });
+
+      // Participant leave → gỡ video element
+      room.on('participantDisconnected', (participant) => {
+        document.querySelectorAll(`[data-participant="${participant.sid}"]`)
+          .forEach(el => el.remove());
+      });
+
+      // Nhận data (chat) từ participant khác
+      room.on('dataReceived', (payload, participant, kind, topic) => {
+        try {
+          const text = textDecoder.decode(payload);
+          let msgObj = null;
+          try {
+            msgObj = JSON.parse(text);
+          } catch (e) {
+            // không phải JSON, fallback dùng raw text
+          }
+
+          if (msgObj && msgObj.type === 'chat') {
+            const senderName =
+              msgObj.sender ||
+              (participant && participant.identity) ||
+              'Peer';
+            appendChatMessage(senderName, msgObj.text || '', false);
+          } else {
+            const senderName =
+              (participant && participant.identity) ||
+              'Peer';
+            appendChatMessage(senderName, text, false);
+          }
+        } catch (e) {
+          console.error('Decode chat failed:', e);
+        }
+      });
+
+      // 4. Connect LiveKit
+      await room.connect(data.livekit_url, data.livekit_jwt);
+
+      // 5. Publish local tracks
+      const localTracks = await LivekitClient.createLocalTracks({ audio: true, video: true });
+      for (const track of localTracks) {
+        await room.localParticipant.publishTrack(track);
+        const el = track.attach();
+        el.dataset.participant = room.localParticipant.sid;
+        document.getElementById('videos').appendChild(el);
+      }
+
+      document.getElementById("endBtn").disabled = false;
+
+      // Chat: cho phép gửi khi đã connect
+      const sendBtn = document.getElementById("sendChatBtn");
+      if (sendBtn) sendBtn.disabled = false;
+
+      console.log("Connected to room:", room.name);
+    } catch (err) {
+      console.error("Join failed:", err);
+    }
+  };
+
+  // Gửi tin nhắn chat
+  document.getElementById("sendChatBtn").onclick = async () => {
+    const input = document.getElementById("chatInput");
+    if (!input) return;
+
+    const text = input.value.trim();
+    if (!text) return;
+
+    if (!currentRoom) {
+      alert("You are not connected to a room.");
       return;
     }
 
-    // 1. Xin LiveKit token
-    const res = await fetch(PORTAL_URL, {
-      method: "POST",
-      headers: { 
-        "Authorization": "Bearer " + SIGNAL_JWT,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ room: roomId })
-    });
-    const data = await res.json();
+    try {
+      const payloadObj = {
+        type: 'chat',
+        text: text,
+        sender: CHAT_USERNAME || 'User',
+        ts: Date.now()
+      };
 
-    // 2. Tạo Room instance
-    const room = new LivekitClient.Room();
-    currentRoom = room; // lưu để end call
+      const encoded = textEncoder.encode(JSON.stringify(payloadObj));
 
-    // Khi mất kết nối (host xóa phòng, bị kick, lỗi unrecoverable...)
-    room.on('disconnected', (reason) => {
-      console.log("Disconnected reason:", reason);
-      // Xoá toàn bộ video UI
-      document.getElementById('videos').innerHTML = '';
-      document.getElementById('endBtn').disabled = true;
+      // Gửi data dạng reliable để chat không mất gói
+      await currentRoom.localParticipant.publishData(encoded, { reliable: true });
 
-      if (reason === 'ROOM_DELETED') {
-        alert("Host ended the room.");
-      } else {
-        alert("You were disconnected: " + reason);
+      appendChatMessage('You', text, true);
+      input.value = '';
+    } catch (e) {
+      console.error('Send chat error:', e);
+    }
+  };
+
+  // End call
+  document.getElementById("endBtn").onclick = async () => {
+    const roomId = document.getElementById("roomId").value.trim();
+    if (!roomId) { alert("Missing room id"); return; }
+
+    try {
+      // YÊU CẦU backend đóng phòng (nếu không phải host, backend trả 403)
+      const res = await fetch("https://app.shieldrtc.com/api/rooms/end", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + SIGNAL_JWT,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ room_id: roomId })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn("End room failed:", err);
+        alert(err.error || "Only host can end this room (or server error).");
+        // Dù không phải host, vẫn cho phép *rời phòng cá nhân*
       }
-    });
-
-    // 3. Event: khi có track remote
-    room.on('trackSubscribed', (track, publication, participant) => {
-      if (track.kind === 'video' || track.kind === 'audio') {
-        const el = track.attach();
-        el.dataset.participant = participant.sid;
-        document.getElementById('videos').appendChild(el);
-      }
-    });
-
-    // Participant leave → gỡ video element
-    room.on('participantDisconnected', (participant) => {
-      document.querySelectorAll(`[data-participant="${participant.sid}"]`)
-        .forEach(el => el.remove());
-    });
-
-    // 4. Connect LiveKit
-    await room.connect(data.livekit_url, data.livekit_jwt);
-
-    // 5. Publish local tracks
-    const localTracks = await LivekitClient.createLocalTracks({ audio: true, video: true });
-    for (const track of localTracks) {
-      await room.localParticipant.publishTrack(track);
-      const el = track.attach();
-      el.dataset.participant = room.localParticipant.sid;
-      document.getElementById('videos').appendChild(el);
+    } catch (e) {
+      console.error("End room error:", e);
     }
 
-    document.getElementById("endBtn").disabled = false;
-    console.log("Connected to room:", room.name);
-  } catch (err) {
-    console.error("Join failed:", err);
-  }
-};
-
-// End call
-document.getElementById("endBtn").onclick = async () => {
-  const roomId = document.getElementById("roomId").value.trim();
-  if (!roomId) { alert("Missing room id"); return; }
-
-  try {
-    // YÊU CẦU backend đóng phòng (nếu không phải host, backend trả 403)
-    const res = await fetch("https://app.shieldrtc.com/api/rooms/end", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + SIGNAL_JWT,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ room_id: roomId })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.warn("End room failed:", err);
-      alert(err.error || "Only host can end this room (or server error).");
-      // Dù không phải host, vẫn cho phép *rời phòng cá nhân*
+    // Rời phòng local (UI của người khác sẽ được server kick → họ tự nhận 'disconnected')
+    if (currentRoom) {
+      await currentRoom.disconnect();
+      currentRoom = null;
     }
-  } catch (e) {
-    console.error("End room error:", e);
-  }
-
-  // Rời phòng local (UI của người khác sẽ được server kick → họ tự nhận 'disconnected')
-  if (currentRoom) {
-    await currentRoom.disconnect();
-    currentRoom = null;
-  }
-  document.getElementById("videos").innerHTML = "";
-  document.getElementById("endBtn").disabled = true;
-};
+    document.getElementById("videos").innerHTML = "";
+    document.getElementById("endBtn").disabled = true;
+    resetChatBox();
+    const sendBtn = document.getElementById("sendChatBtn");
+    if (sendBtn) sendBtn.disabled = true;
+  };
+});
 </script>
 </body>
 </html>

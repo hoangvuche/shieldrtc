@@ -80,6 +80,16 @@ class AuthService
                 'id'       => 2,
                 'username' => 'test2',
                 'password' => 'abcdef'
+            ],
+            [
+                'id'       => 3,
+                'username' => 'test3',
+                'password' => '123456'
+            ],
+            [
+                'id'       => 4,
+                'username' => 'test4',
+                'password' => '123456'
             ]
         ];
 
