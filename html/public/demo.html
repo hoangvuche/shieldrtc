@@ -274,6 +274,68 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+    // Reset toàn bộ UI call -----
+  function resetCallUI() {
+    // Xoá toàn bộ video UI
+    const videosEl = document.getElementById('videos');
+    if (videosEl) {
+      videosEl.innerHTML = '';
+    }
+
+    // Disable nút End Call
+    const endBtn = document.getElementById('endBtn');
+    if (endBtn) {
+      endBtn.disabled = true;
+    }
+
+    // Chat: clear + disable gửi
+    resetChatBox();
+    const sendBtn = document.getElementById('sendChatBtn');
+    if (sendBtn) {
+      sendBtn.disabled = true;
+    }
+
+    // Camera
+    if (toggleCameraBtn) {
+      toggleCameraBtn.disabled = true;
+    }
+    cameraEnabled = true;
+    if (toggleCameraIcon) {
+      toggleCameraIcon.textContent = 'videocam';
+    }
+
+    // Mic
+    if (toggleMicBtn) {
+      toggleMicBtn.disabled = true;
+    }
+    micEnabled = true;
+    if (toggleMicIcon) {
+      toggleMicIcon.textContent = 'mic';
+    }
+
+    // Switch camera
+    if (switchCameraBtn) {
+      switchCameraBtn.disabled = true;
+    }
+    videoDevices = [];
+    currentVideoDeviceIndex = 0;
+
+    // Loa cuộc gọi
+    if (toggleSpeakerBtn) {
+      toggleSpeakerBtn.disabled = true;
+    }
+    speakerEnabled = true;
+    if (toggleSpeakerIcon) {
+      toggleSpeakerIcon.textContent = 'volume_up';
+    }
+    applySpeakerMuteToCallMedia();
+
+    // Dọn thêm state local video (cho sạch sẽ)
+    localVideoTrack = null;
+    localVideoElement = null;
+    cameraFacingMode = 'user';
+  }
+
   // Đăng nhập
   document.getElementById("loginBtn").onclick = async () => {
     try {
