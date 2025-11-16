@@ -28,6 +28,12 @@
       background: black;
     }
 
+    /* Flip mirror cho tất cả video gắn class này */
+    .mirror-video {
+      transform: scaleX(-1);
+      transform-origin: center center;
+    }
+
     .section {
       display: flex;
       gap: 4px;
@@ -57,9 +63,11 @@
     }
 
     #toggleCameraBtn,
-    #toggleMicBtn {
+    #toggleMicBtn,
+    #switchCameraBtn {
       margin-left: 4px;
       border: none;
+      background: transparent;
       cursor: pointer;
       padding: 2px 4px;
     }
@@ -124,7 +132,7 @@
     }
   </style>
   <link rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&icon_names=content_copy,mic,mic_off,videocam,videocam_off&display=block" />
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=block" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
@@ -162,6 +170,11 @@
           <span class="material-symbols-outlined">videocam</span>
         </button>
 
+        <!-- Switch camera front/back -->
+        <button id="switchCameraBtn" disabled title="Switch camera">
+          <span class="material-symbols-outlined">switch_camera</span>
+        </button>
+
         <!-- Toggle mic -->
         <button id="toggleMicBtn" class="icon-btn" disabled title="Mute microphone">
           <span class="material-symbols-outlined">mic</span>
@@ -188,6 +201,11 @@ let SIGNAL_JWT = null;
 let currentRoom = null;   // giữ instance room để disconnect
 let cameraEnabled = true; // trạng thái hiện tại của camera
 let micEnabled = true;    // trạng thái hiện tại của mic
+let videoDevices = [];
+let currentVideoDeviceIndex = 0;
+let localVideoTrack = null;
+let cameraFacingMode = 'user'; // 'user' = cam trước, 'environment' = cam sau
+let localVideoElement = null;
 
 // Chat related
 let CHAT_USERNAME = null; // dùng tên đăng nhập để hiển thị
@@ -234,6 +252,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const toggleMicBtn  = document.getElementById("toggleMicBtn");
   const toggleMicIcon = toggleMicBtn
     ? toggleMicBtn.querySelector('.material-symbols-outlined')
+    : null;
+
+  const switchCameraBtn  = document.getElementById("switchCameraBtn");
+  const switchCameraIcon = switchCameraBtn
+    ? switchCameraBtn.querySelector('.material-symbols-outlined')
     : null;
 
   // Đăng nhập
@@ -365,6 +388,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (toggleMicIcon) {
           toggleMicIcon.textContent = 'mic';
         }
+
+        if (switchCameraBtn) {
+          switchCameraBtn.disabled = true;
+        }
+        videoDevices = [];
+        currentVideoDeviceIndex = 0;
         
         if (reason === LivekitClient.DisconnectReason.ROOM_DELETED) {
           alert("Host ended the room.");
@@ -383,6 +412,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (track.kind === 'video' || track.kind === 'audio') {
           const el = track.attach();
           el.dataset.participant = participant.sid;
+
+          // flip mirror cho cả video remote luôn
+          if (track.kind === 'video') {
+            el.classList.add('mirror-video');
+          }
+
           document.getElementById('videos').appendChild(el);
         }
       });
@@ -425,11 +460,28 @@ document.addEventListener('DOMContentLoaded', () => {
       await room.connect(data.livekit_url, data.livekit_jwt);
 
       // 5. Publish local tracks
-      const localTracks = await LivekitClient.createLocalTracks({ audio: true, video: true });
+      const localTracks = await LivekitClient.createLocalTracks({
+        audio: true,
+        video: { facingMode: cameraFacingMode }, // mặc định cam trước
+      });
+
       for (const track of localTracks) {
         await room.localParticipant.publishTrack(track);
+
         const el = track.attach();
         el.dataset.participant = room.localParticipant.sid;
+
+        if (track.kind === 'video') {
+          // lưu lại để dùng cho flip camera
+          localVideoTrack = track;
+          localVideoElement = el;
+
+          // CHỈ mirror nếu đang dùng camera trước
+          if (cameraFacingMode === 'user') {
+            el.classList.add('mirror-video');
+          }
+        }
+
         document.getElementById('videos').appendChild(el);
       }
 
@@ -457,6 +509,11 @@ document.addEventListener('DOMContentLoaded', () => {
           toggleMicIcon.textContent = 'mic';
         }
         toggleMicBtn.title = 'Mute microphone';
+      }
+
+      // Chuẩn bị danh sách camera để switch trước/sau
+      if (switchCameraBtn) {
+        switchCameraBtn.disabled = false;
       }
 
     } catch (err) {
@@ -515,6 +572,35 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleCameraBtn.title = cameraEnabled ? 'Turn camera off' : 'Turn camera on';
       } catch (e) {
         console.error("Toggle camera error:", e);
+      }
+    };
+  }
+
+  // Switch camera (front/back)
+  if (switchCameraBtn) {
+    switchCameraBtn.onclick = async () => {
+      if (!localVideoTrack) return;
+
+      // Đảo hướng: trước <-> sau
+      cameraFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+
+      try {
+        await localVideoTrack.restartTrack({
+          facingMode: cameraFacingMode,
+        });
+
+        // Cập nhật mirror cho video local
+        if (localVideoElement) {
+          if (cameraFacingMode === 'user') {
+            localVideoElement.classList.add('mirror-video');
+          } else {
+            localVideoElement.classList.remove('mirror-video');
+          }
+        }
+
+        console.log('Switched camera to', cameraFacingMode);
+      } catch (e) {
+        console.error('Switch camera failed:', e);
       }
     };
   }
@@ -593,6 +679,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (toggleMicIcon) {
       toggleMicIcon.textContent = 'mic';
     }
+
+    if (switchCameraBtn) {
+      switchCameraBtn.disabled = true;
+    }
+    videoDevices = [];
+    currentVideoDeviceIndex = 0;
   };
 });
 </script>
