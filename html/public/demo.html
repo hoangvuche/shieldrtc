@@ -409,16 +409,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 3. Event: khi có track remote
       room.on('trackSubscribed', (track, publication, participant) => {
-        if (track.kind === 'video' || track.kind === 'audio') {
+        if (track.kind === 'video') {
           const el = track.attach();
           el.dataset.participant = participant.sid;
-
-          // flip mirror cho cả video remote luôn
-          if (track.kind === 'video') {
-            el.classList.add('mirror-video');
-          }
-
           document.getElementById('videos').appendChild(el);
+        } else if (track.kind === 'audio') {
+          // audio từ người khác
+          const el = track.attach();
+          el.dataset.participant = participant.sid;
+          // không cần show UI, chỉ để nghe
+          el.style.display = 'none';
+          document.body.appendChild(el);
         }
       });
 
@@ -468,10 +469,10 @@ document.addEventListener('DOMContentLoaded', () => {
       for (const track of localTracks) {
         await room.localParticipant.publishTrack(track);
 
-        const el = track.attach();
-        el.dataset.participant = room.localParticipant.sid;
-
         if (track.kind === 'video') {
+          const el = track.attach();
+          el.dataset.participant = room.localParticipant.sid;
+
           // lưu lại để dùng cho flip camera
           localVideoTrack = track;
           localVideoElement = el;
@@ -480,9 +481,14 @@ document.addEventListener('DOMContentLoaded', () => {
           if (cameraFacingMode === 'user') {
             el.classList.add('mirror-video');
           }
+
+          document.getElementById('videos').appendChild(el);
         }
 
-        document.getElementById('videos').appendChild(el);
+        // ⚠️ KHÔNG attach audio cho local
+        // if (track.kind === 'audio') {
+        //   // không track.attach() -> không tự nghe chính mình
+        // }
       }
 
       document.getElementById("endBtn").disabled = false;
