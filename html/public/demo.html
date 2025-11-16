@@ -8,6 +8,11 @@
       padding: 10px;
     }
 
+    input, button {
+      padding: 8px;
+      font-size: 16px;
+    }
+
     #createRoomBtn {
       margin-bottom: 5px;
     }
@@ -28,6 +33,11 @@
       gap: 4px;
     }
 
+    #mediaWrapper {
+      display: flex;
+      align-items: center;
+    }
+
     #createdRoom, #joinSection {
       align-items: center;
     }
@@ -44,15 +54,46 @@
 
     #chatInput {
       width: 520px; 
-      height: 30px;
     }
 
-    #toggleCameraBtn {
+    #toggleCameraBtn,
+    #toggleMicBtn {
       margin-left: 4px;
+      border: none;
+      cursor: pointer;
+      padding: 2px 4px;
+    }
+
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 24px;
+      line-height: 1;
+      display: inline-block;
+      text-transform: none;
+      letter-spacing: normal;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-feature-settings: 'liga';
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
       border: none;
       background: transparent;
       cursor: pointer;
-      padding: 2px 4px;
+    }
+
+    .icon-btn:hover {
+      background-color: rgba(0,0,0,0.2);
     }
 
     @media screen and (max-width: 640px) {
@@ -72,12 +113,13 @@
       }
     }
   </style>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=content_copy,videocam,videocam_off" />
+  <link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&icon_names=content_copy,mic,mic_off,videocam,videocam_off&display=block" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
 <body>
   <div class="main-container">
-    <h2>LiveKit Test</h2>
+    <h2>ShieldRTC Demo</h2>
 
     <!-- Form login -->
     <div class="section">
@@ -90,7 +132,10 @@
     <!-- Create room -->
     <button id="createRoomBtn" disabled>Create Room</button>
     <div id="createdRoom" class="section">
-      Created Room ID: <span id="createdRoomId"></span><span id="copyRoom" class="material-symbols-outlined">content_copy</span>
+      Created Room ID: <span id="createdRoomId"></span>
+      <button id="copyRoom" class="icon-btn" title="Turn camera off">
+        <span class="material-symbols-outlined">content_copy</span>
+      </button>
     </div>
     <br>
 
@@ -100,10 +145,19 @@
       <button id="joinBtn" disabled>Join Room</button>
       <button id="endBtn" disabled style="color: red;">End Call</button>
 
-      <!-- Toggle camera -->
-      <button id="toggleCameraBtn" disabled title="Turn camera off">
-        <span class="material-symbols-outlined">videocam</span>
-      </button>
+      <div id="mediaWrapper">
+
+        <!-- Toggle camera -->
+        <button id="toggleCameraBtn" class="icon-btn" disabled title="Turn camera off">
+          <span class="material-symbols-outlined">videocam</span>
+        </button>
+
+        <!-- Toggle mic -->
+        <button id="toggleMicBtn" class="icon-btn" disabled title="Mute microphone">
+          <span class="material-symbols-outlined">mic</span>
+        </button>
+
+      </div>
     </div>
 
     <h3>Videos</h3>
@@ -123,6 +177,7 @@ const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
 let SIGNAL_JWT = null;
 let currentRoom = null;   // giữ instance room để disconnect
 let cameraEnabled = true; // trạng thái hiện tại của camera
+let micEnabled = true;    // trạng thái hiện tại của mic
 
 // Chat related
 let CHAT_USERNAME = null; // dùng tên đăng nhập để hiển thị
@@ -166,6 +221,11 @@ document.addEventListener('DOMContentLoaded', () => {
     ? toggleCameraBtn.querySelector('.material-symbols-outlined')
     : null;
     
+  const toggleMicBtn  = document.getElementById("toggleMicBtn");
+  const toggleMicIcon = toggleMicBtn
+    ? toggleMicBtn.querySelector('.material-symbols-outlined')
+    : null;
+
   // Đăng nhập
   document.getElementById("loginBtn").onclick = async () => {
     try {
@@ -287,6 +347,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (toggleCameraIcon) {
           toggleCameraIcon.textContent = 'videocam';
         }
+
+        if (toggleMicBtn) {
+          toggleMicBtn.disabled = true;
+        }
+        micEnabled = true;
+        if (toggleMicIcon) {
+          toggleMicIcon.textContent = 'mic';
+        }
         
         if (reason === LivekitClient.DisconnectReason.ROOM_DELETED) {
           alert("Host ended the room.");
@@ -371,6 +439,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         toggleCameraBtn.title = 'Turn camera off';
       }
+
+      if (toggleMicBtn) {
+        micEnabled = true;
+        toggleMicBtn.disabled = false;
+        if (toggleMicIcon) {
+          toggleMicIcon.textContent = 'mic';
+        }
+        toggleMicBtn.title = 'Mute microphone';
+      }
+
     } catch (err) {
       console.error("Join failed:", err);
     }
@@ -409,6 +487,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  // Toggle camera
   if (toggleCameraBtn) {
     toggleCameraBtn.onclick = async () => {
       if (!currentRoom) return;
@@ -426,6 +505,28 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleCameraBtn.title = cameraEnabled ? 'Turn camera off' : 'Turn camera on';
       } catch (e) {
         console.error("Toggle camera error:", e);
+      }
+    };
+  }
+
+  // Toggle mic
+  if (toggleMicBtn) {
+    toggleMicBtn.onclick = async () => {
+      if (!currentRoom) return;
+      try {
+        // đảo trạng thái
+        micEnabled = !micEnabled;
+
+        // LiveKit sẽ mute/unmute track mic đang publish
+        await currentRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+
+        // cập nhật icon + tooltip
+        if (toggleMicIcon) {
+          toggleMicIcon.textContent = micEnabled ? 'mic' : 'mic_off';
+        }
+        toggleMicBtn.title = micEnabled ? 'Mute microphone' : 'Unmute microphone';
+      } catch (e) {
+        console.error("Toggle mic error:", e);
       }
     };
   }
@@ -473,6 +574,14 @@ document.addEventListener('DOMContentLoaded', () => {
     cameraEnabled = true;
     if (toggleCameraIcon) {
       toggleCameraIcon.textContent = 'videocam';
+    }
+
+    if (toggleMicBtn) {
+      toggleMicBtn.disabled = true;
+    }
+    micEnabled = true;
+    if (toggleMicIcon) {
+      toggleMicIcon.textContent = 'mic';
     }
   };
 });
