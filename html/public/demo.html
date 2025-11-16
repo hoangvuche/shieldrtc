@@ -96,6 +96,12 @@
       background-color: rgba(0,0,0,0.2);
     }
 
+    #videos {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: left;
+    }
+
     @media screen and (max-width: 640px) {
       input, button {
         width: 100%;
@@ -110,6 +116,10 @@
 
       #chatBox, #chatInput {
         width: 100%;
+      }
+
+      #videos {
+        justify-content: center;
       }
     }
   </style>
