@@ -424,8 +424,28 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         body: JSON.stringify({ room: roomId })
       });
-      const data = await res.json();
 
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (e) {
+        console.error("Parse token response failed:", e);
+      }
+
+      // Nếu request lỗi hoặc thiếu dữ liệu cần thiết → stop
+      if (!res.ok || !data || !data.livekit_url || !data.livekit_jwt) {
+        let msg = "Không thể lấy token kết nối.";
+        if (data && (data.message || data.error || data.detail)) {
+          msg = data.message || data.error || data.detail;
+        }
+        alert("Join room failed: " + msg);
+
+        if (typeof resetCallUI === "function") {
+          resetCallUI();
+        }
+        return; // ❌ KHÔNG connect, KHÔNG mở cam local
+      }
+      
       // 2. Tạo Room instance
       const room = new LivekitClient.Room();
       currentRoom = room; // lưu để end call
