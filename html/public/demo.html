@@ -17,10 +17,6 @@
       margin-bottom: 5px;
     }
 
-    #copyRoom {
-      cursor: pointer;
-    }
-
     video {
       width: 300px;
       height: 200px;
@@ -64,10 +60,10 @@
 
     #toggleCameraBtn,
     #toggleMicBtn,
-    #switchCameraBtn {
+    #switchCameraBtn,
+    #toggleSpeakerBtn {
       margin-left: 4px;
       border: none;
-      background: transparent;
       cursor: pointer;
       padding: 2px 4px;
     }
@@ -171,8 +167,13 @@
         </button>
 
         <!-- Switch camera front/back -->
-        <button id="switchCameraBtn" disabled title="Switch camera">
+        <button id="switchCameraBtn" class="icon-btn" disabled title="Switch camera">
           <span class="material-symbols-outlined">switch_camera</span>
+        </button>
+
+        <!-- Toggle call speaker -->
+        <button id="toggleSpeakerBtn" class="icon-btn" disabled title="Mute call audio">
+          <span class="material-symbols-outlined">volume_up</span>
         </button>
 
         <!-- Toggle mic -->
@@ -198,9 +199,10 @@ const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
 const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
 
 let SIGNAL_JWT = null;
-let currentRoom = null;   // giữ instance room để disconnect
-let cameraEnabled = true; // trạng thái hiện tại của camera
-let micEnabled = true;    // trạng thái hiện tại của mic
+let currentRoom = null;       // giữ instance room để disconnect
+let cameraEnabled = true;     // trạng thái hiện tại của camera
+let micEnabled = true;        // trạng thái hiện tại của mic
+let speakerEnabled = true;    // trạng thái hiện tại của loa
 let videoDevices = [];
 let currentVideoDeviceIndex = 0;
 let localVideoTrack = null;
@@ -254,10 +256,23 @@ document.addEventListener('DOMContentLoaded', () => {
     ? toggleMicBtn.querySelector('.material-symbols-outlined')
     : null;
 
+  const toggleSpeakerBtn  = document.getElementById("toggleSpeakerBtn");
+  const toggleSpeakerIcon = toggleSpeakerBtn
+  ? toggleSpeakerBtn.querySelector('.material-symbols-outlined')
+  : null;
+
   const switchCameraBtn  = document.getElementById("switchCameraBtn");
   const switchCameraIcon = switchCameraBtn
     ? switchCameraBtn.querySelector('.material-symbols-outlined')
     : null;
+
+  function applySpeakerMuteToCallMedia() {
+    // Mute/unmute tất cả media của participants trong cuộc gọi
+    const mediaEls = document.querySelectorAll('audio[data-participant], video[data-participant]');
+    mediaEls.forEach(el => {
+      el.muted = !speakerEnabled; // speakerEnabled=false => muted=true
+    });
+  }
 
   // Đăng nhập
   document.getElementById("loginBtn").onclick = async () => {
@@ -394,6 +409,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         videoDevices = [];
         currentVideoDeviceIndex = 0;
+
+        if (toggleSpeakerBtn) {
+          toggleSpeakerBtn.disabled = true;
+        }
+        speakerEnabled = true;
+        if (toggleSpeakerIcon) {
+          toggleSpeakerIcon.textContent = 'volume_up';
+        }
+        applySpeakerMuteToCallMedia(); // để chắc ăn, nếu còn media
         
         if (reason === LivekitClient.DisconnectReason.ROOM_DELETED) {
           alert("Host ended the room.");
@@ -414,12 +438,13 @@ document.addEventListener('DOMContentLoaded', () => {
           el.dataset.participant = participant.sid;
           document.getElementById('videos').appendChild(el);
         } else if (track.kind === 'audio') {
-          // audio từ người khác
           const el = track.attach();
           el.dataset.participant = participant.sid;
-          // không cần show UI, chỉ để nghe
           el.style.display = 'none';
           document.body.appendChild(el);
+
+          // NEW: nếu loa đang tắt thì audio mới cũng phải tắt theo
+          el.muted = !speakerEnabled;
         }
       });
 
@@ -520,6 +545,16 @@ document.addEventListener('DOMContentLoaded', () => {
       // Chuẩn bị danh sách camera để switch trước/sau
       if (switchCameraBtn) {
         switchCameraBtn.disabled = false;
+      }
+
+      // NEW: bật nút mute speaker
+      if (toggleSpeakerBtn) {
+        speakerEnabled = true;
+        toggleSpeakerBtn.disabled = false;
+        if (toggleSpeakerIcon) {
+          toggleSpeakerIcon.textContent = 'volume_up';
+        }
+        toggleSpeakerBtn.title = 'Mute call audio';
       }
 
     } catch (err) {
@@ -633,6 +668,25 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  // Toggle speaker (call audio)
+  if (toggleSpeakerBtn) {
+    toggleSpeakerBtn.onclick = () => {
+      if (!currentRoom) return;
+
+      // Đảo trạng thái loa
+      speakerEnabled = !speakerEnabled;
+
+      // Áp mute/unmute cho toàn bộ media của call
+      applySpeakerMuteToCallMedia();
+
+      // Cập nhật icon + tooltip
+      if (toggleSpeakerIcon) {
+        toggleSpeakerIcon.textContent = speakerEnabled ? 'volume_up' : 'volume_off';
+      }
+      toggleSpeakerBtn.title = speakerEnabled ? 'Mute call audio' : 'Unmute call audio';
+    };
+  }
+
   // End call
   document.getElementById("endBtn").onclick = async () => {
     const roomId = document.getElementById("roomId").value.trim();
@@ -691,6 +745,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     videoDevices = [];
     currentVideoDeviceIndex = 0;
+
+    // NEW: reset loa
+    if (toggleSpeakerBtn) {
+      toggleSpeakerBtn.disabled = true;
+    }
+    speakerEnabled = true;
+    if (toggleSpeakerIcon) {
+      toggleSpeakerIcon.textContent = 'volume_up';
+    }
+    applySpeakerMuteToCallMedia();
   };
 });
 </script>
