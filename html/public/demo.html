@@ -79,7 +79,6 @@
     #toggleSpeakerBtn {
       margin-left: 4px;
       border: none;
-      cursor: pointer;
       padding: 2px 4px;
     }
 
@@ -133,6 +132,23 @@
 
     .icon-btn.sensitive-btn.is-muted:hover {
       background-color: #c82333;
+    }
+
+    /* Trạng thái disabled chung cho icon button */
+    .icon-btn:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+
+    /* Disabled riêng cho nút “nhạy cảm” như mute mic */
+    .icon-btn.sensitive-btn:disabled {
+      background-color: rgba(108, 117, 125, 0.8); /* xám nhạt cho thấy đang khoá */
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Tắt hiệu ứng hover khi đang disabled */
+    .icon-btn.sensitive-btn:disabled:hover {
+      background-color: rgba(108, 117, 125, 0.8);
     }
 
     #videos {
