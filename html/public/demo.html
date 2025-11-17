@@ -100,6 +100,26 @@
       background-color: rgba(0,0,0,0.2);
     }
 
+    /* Dùng chung với .icon-btn: <button class="icon-btn sensitive-btn"> */
+    .icon-btn.sensitive-btn {
+      background-color: rgba(220, 53, 69, 0.9); /* đỏ kiểu danger */
+      color: #fff;
+    }
+
+    .icon-btn.sensitive-btn:hover {
+      background-color: rgba(220, 53, 69, 1);
+    }
+
+    /* Nếu muốn trạng thái “bình thường” khác với “đang tắt mic” */
+    .icon-btn.sensitive-btn.is-muted {
+      background-color: rgba(220, 53, 69, 0.95);
+      color: #fff;
+    }
+
+    .icon-btn.sensitive-btn.is-muted:hover {
+      background-color: #c82333;
+    }
+
     #videos {
       display: flex;
       flex-wrap: wrap;
@@ -177,7 +197,7 @@
         </button>
 
         <!-- Toggle mic -->
-        <button id="toggleMicBtn" class="icon-btn" disabled title="Mute microphone">
+        <button id="toggleMicBtn" class="icon-btn sensitive-btn" disabled title="Mute microphone">
           <span class="material-symbols-outlined">mic</span>
         </button>
 
@@ -336,6 +356,24 @@ document.addEventListener('DOMContentLoaded', () => {
     cameraFacingMode = 'user';
   }
 
+  // ----- Helper: cập nhật UI cho nút mic -----
+  function updateMicUI() {
+    if (!toggleMicBtn) return;
+
+    // icon + tooltip
+    if (toggleMicIcon) {
+      toggleMicIcon.textContent = micEnabled ? 'mic' : 'mic_off';
+    }
+    toggleMicBtn.title = micEnabled ? 'Mute microphone' : 'Unmute microphone';
+
+    // trạng thái màu (class is-muted)
+    if (micEnabled) {
+      toggleMicBtn.classList.remove('is-muted');
+    } else {
+      toggleMicBtn.classList.add('is-muted');
+    }
+  }
+  
   // Đăng nhập
   document.getElementById("loginBtn").onclick = async () => {
     try {
@@ -740,10 +778,8 @@ document.addEventListener('DOMContentLoaded', () => {
         await currentRoom.localParticipant.setMicrophoneEnabled(micEnabled);
 
         // cập nhật icon + tooltip
-        if (toggleMicIcon) {
-          toggleMicIcon.textContent = micEnabled ? 'mic' : 'mic_off';
-        }
-        toggleMicBtn.title = micEnabled ? 'Mute microphone' : 'Unmute microphone';
+        updateMicUI();
+
       } catch (e) {
         console.error("Toggle mic error:", e);
       }
@@ -818,9 +854,7 @@ document.addEventListener('DOMContentLoaded', () => {
       toggleMicBtn.disabled = true;
     }
     micEnabled = true;
-    if (toggleMicIcon) {
-      toggleMicIcon.textContent = 'mic';
-    }
+    updateMicUI();
 
     if (switchCameraBtn) {
       switchCameraBtn.disabled = true;
