@@ -13,6 +13,21 @@
       font-size: 16px;
     }
 
+    .btn-with-icon {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      padding: 5px 10px;
+      width: fit-content;
+    }
+
+    #sendWrapper {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
     #createRoomBtn {
       margin-bottom: 5px;
     }
@@ -45,7 +60,7 @@
     }
 
     #chatBox {
-      width: 610px; 
+      width: 643px; 
       height: 150px; 
       border: 1px solid #ccc; 
       padding: 5px; 
@@ -167,7 +182,7 @@
     <button id="createRoomBtn" disabled>Create Room</button>
     <div id="createdRoom" class="section">
       Created Room ID: <span id="createdRoomId"></span>
-      <button id="copyRoom" class="icon-btn" title="Turn camera off">
+      <button id="copyRoom" class="icon-btn" title="Copy">
         <span class="material-symbols-outlined">content_copy</span>
       </button>
     </div>
@@ -210,8 +225,13 @@
     <h3>Chat (ephemeral)</h3>
     <div id="chatBox">
     </div>
-    <input type="text" id="chatInput" placeholder="Type a message">
-    <button id="sendChatBtn" disabled>Send</button>
+    <div id="sendWrapper">
+      <input type="text" id="chatInput" placeholder="Type a message">
+      <button id="sendChatBtn" class="btn-with-icon" disabled>
+        <span class="material-symbols-outlined">send</span>
+        Send
+      </button>
+    </div>
   </div>
 <script>
 const LOGIN_URL = "https://app.shieldrtc.com/api/login";
@@ -373,7 +393,7 @@ document.addEventListener('DOMContentLoaded', () => {
       toggleMicBtn.classList.add('is-muted');
     }
   }
-  
+
   // Đăng nhập
   document.getElementById("loginBtn").onclick = async () => {
     try {
