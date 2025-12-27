@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>ShieldRTC Demo</title>
+  <title>ShieldRTC - Ephemeral Zero-retention</title>
+  <link rel="shortcut icon" type=“image/x-icon” href="images/favicon.ico">
   <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
   <style>
     .main-container {
@@ -114,6 +115,39 @@
       background-color: rgba(0,0,0,0.2);
     }
 
+    /* ---- Press/active feedback (cảm nhấn) ---- */
+    .icon-btn {
+      transition: transform 80ms ease, background-color 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .icon-btn:active:not(:disabled) {
+      transform: scale(0.92);
+    }
+    .icon-btn:active:not(:disabled):not(.sensitive-btn) {
+      background-color: rgba(0,0,0,0.28);
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.08) inset;
+    }
+    .icon-btn.sensitive-btn:active:not(:disabled) {
+      filter: brightness(0.95);
+    }
+    .icon-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(0,153,255,0.35);
+    }
+    .icon-btn.sensitive-btn:focus-visible {
+      box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.35);
+    }
+
+    /* Buttons thường (login/join/send/zoom...) */
+    button:not(.icon-btn) {
+      transition: transform 80ms ease, filter 120ms ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:not(.icon-btn):active:not(:disabled) {
+      transform: translateY(1px);
+      filter: brightness(0.96);
+    }
+
     /* Dùng chung với .icon-btn: <button class="icon-btn sensitive-btn"> */
     .icon-btn.sensitive-btn {
       background-color: rgba(220, 53, 69, 0.9); /* đỏ kiểu danger */
@@ -177,6 +211,275 @@
         justify-content: center;
       }
     }
+  
+    /* ---- Stage layout: screen share (left) + participants (right) ---- */
+    .stage {
+      --screenPaneWidth: 65%;
+      display: flex;
+      width: 100%;
+      min-height: 320px;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .pane {
+      overflow: auto;
+    }
+
+    .screen-pane {
+      flex: 0 0 var(--screenPaneWidth);
+      min-width: 240px;
+      background: #000;
+      position: relative;
+    }
+
+    .users-pane {
+      flex: 1 1 auto;
+      min-width: 220px;
+      background: rgba(0,0,0,0.03);
+    }
+
+    .tiles {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px;
+      align-content: flex-start;
+      justify-content: flex-start;
+      box-sizing: border-box;
+    }
+
+    .tile {
+      position: relative;
+      background: #000;
+      border-radius: 18px;
+      overflow: hidden;
+
+      /* Giới hạn tile camera vừa đủ, không phình to khi ít user */
+      width: clamp(160px, 20vw, 240px);
+      max-width: 260px;
+      min-width: 150px;
+
+      /* Không cho tile tự "grow" quá lớn */
+      flex: 0 1 auto;
+
+      aspect-ratio: 16 / 9;
+    }
+
+    /* ---- Speaking indicator ---- */
+    .tile,
+    .screen-tile {
+      transition: box-shadow 120ms ease;
+    }
+    .tile.is-speaking,
+    .screen-tile.is-speaking {
+      box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.95);
+    }
+
+.tile .media,
+    .screen-tile .media {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Override global video sizing inside stage */
+    #stage video {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: #000;
+    }
+
+    .tile video {
+      object-fit: cover; /* default for landscape */
+      border-radius: inherit;
+    }
+
+    /* If a user's camera is portrait (mobile), avoid cropping the face */
+    .tile.is-portrait video {
+      object-fit: contain;
+    }
+
+    /* Placeholder khi user tắt cam / chưa có camera track */
+    .tile .placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 8px;
+      color: rgba(255,255,255,0.82);
+      font-size: 12px;
+      letter-spacing: 0.2px;
+      user-select: none;
+      background: radial-gradient(ellipse at center, rgba(255,255,255,0.07), rgba(0,0,0,0.0) 65%);
+    }
+    .tile .placeholder .material-symbols-outlined {
+      font-size: 36px;
+      opacity: 0.9;
+    }
+
+    .screen-slot {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+
+    .screen-tile {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .screen-tile video {
+      object-fit: contain; /* screen share nhìn rõ nội dung */
+    }
+
+
+
+
+    /* ---- Zoom + Pan (drag to move) for screen share ---- */
+    .screen-tile.is-pannable { cursor: grab; }
+    .screen-tile.is-pannable.is-grabbing { cursor: grabbing; }
+    .screen-tile .media {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      touch-action: none; /* allow pointer-drag on touch devices */
+    }
+    .screen-tile .media > video {
+      touch-action: none;
+      will-change: transform;
+    }
+
+.screen-zoom-controls{
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+.screen-zoom-controls .zoom-btn{
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.38);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+.screen-zoom-controls .zoom-btn:hover{
+  background: rgba(0,0,0,0.55);
+}
+.screen-zoom-controls .zoom-btn:disabled{
+  opacity: 0.45;
+  cursor: default;
+}
+.screen-zoom-controls .zoom-btn .material-symbols-outlined{
+  font-size: 22px;
+}
+
+    .name-tag {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 5;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      line-height: 18px;
+      color: #fff;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(6px);
+      user-select: none;
+      pointer-events: none;
+    }
+
+
+    .mic-badge {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      z-index: 6;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(6px);
+      color: #fff;
+      user-select: none;
+    }
+    .mic-badge .material-symbols-outlined {
+      font-size: 18px;
+      opacity: 0.95;
+    }
+    .mic-badge.is-muted {
+      background: rgba(220, 53, 69, 0.92);
+    }
+    .splitter {
+      flex: 0 0 10px;
+      cursor: col-resize;
+      background: rgba(0,0,0,0.06);
+      position: relative;
+    }
+    .splitter::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 3px;
+      height: 46px;
+      border-radius: 2px;
+      background: rgba(0,0,0,0.35);
+      box-shadow: -6px 0 0 rgba(0,0,0,0.18), 6px 0 0 rgba(0,0,0,0.18);
+    }
+
+    .is-hidden { display: none !important; }
+
+    @media screen and (max-width: 640px) {
+      .stage {
+        flex-direction: column;
+        min-height: 420px;
+      }
+      .screen-pane {
+        flex: 0 0 auto;
+        width: 100%;
+        min-width: 0;
+        height: 55vh;
+      }
+      .users-pane {
+        min-width: 0;
+      }
+      .splitter {
+        cursor: row-resize;
+        flex: 0 0 10px;
+        width: 100%;
+      }
+      .splitter::before {
+        width: 46px;
+        height: 3px;
+        box-shadow: 0 -6px 0 rgba(0,0,0,0.18), 0 6px 0 rgba(0,0,0,0.18);
+      }
+    }
+
   </style>
   <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=block" />
@@ -184,7 +487,7 @@
 </head>
 <body>
   <div class="main-container">
-    <h2>ShieldRTC Demo</h2>
+    <h2>ShieldRTC - Ephemeral Zero-retention</h2>
 
     <!-- Form login -->
     <div class="section">
@@ -222,6 +525,11 @@
           <span class="material-symbols-outlined">switch_camera</span>
         </button>
 
+        <!-- Share screen -->
+        <button id="toggleScreenBtn" class="icon-btn" disabled title="Share screen">
+          <span class="material-symbols-outlined">screen_share</span>
+        </button>
+
         <!-- Toggle call speaker -->
         <button id="toggleSpeakerBtn" class="icon-btn" disabled title="Mute call audio">
           <span class="material-symbols-outlined">volume_up</span>
@@ -235,10 +543,18 @@
       </div>
     </div>
 
-    <h3>Videos</h3>
-    <div id="videos"></div>
+    <h3>Room</h3>
+    <div id="stage" class="stage">
+      <div id="screenPane" class="pane screen-pane is-hidden">
+        <div id="screenSlot" class="screen-slot"></div>
+      </div>
+      <div id="splitter" class="splitter is-hidden" title="Kéo để chỉnh độ rộng"></div>
+      <div id="usersPane" class="pane users-pane">
+        <div id="videos" class="tiles"></div>
+      </div>
+    </div>
 
-    <h3>Chat (ephemeral)</h3>
+<h3>Chat (ephemeral)</h3>
     <div id="chatBox">
     </div>
     <div id="sendWrapper">
@@ -249,6 +565,7 @@
       </button>
     </div>
   </div>
+
 <script>
 const LOGIN_URL = "https://app.shieldrtc.com/api/login";
 const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
@@ -256,19 +573,42 @@ const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
 
 let SIGNAL_JWT = null;
 let currentRoom = null;       // giữ instance room để disconnect
-let cameraEnabled = true;     // trạng thái hiện tại của camera
-let micEnabled = true;        // trạng thái hiện tại của mic
-let speakerEnabled = true;    // trạng thái hiện tại của loa
-let videoDevices = [];
-let currentVideoDeviceIndex = 0;
-let localVideoTrack = null;
+
+// trạng thái UI
+let cameraEnabled = true;
+let micEnabled = true;
+let speakerEnabled = true;
 let cameraFacingMode = 'user'; // 'user' = cam trước, 'environment' = cam sau
+
+// local tracks
+let localVideoTrack = null;
 let localVideoElement = null;
+let localHasAudio = false;
+
+// screen share local
+let screenShareEnabled = false;
+let localScreenTracks = []; // video + optional audio
+
+// screen share arbitration (single active sharer)
+let myScreenShareStartedAt = null; // ms epoch when local started sharing (or attempting)
+let startingScreenShare = false;   // true while starting screen share
+
+// camera restore state khi screen share
+let cameraPrevEnabledBeforeScreen = null;
+let cameraDisabledByScreenShare = false;
 
 // Chat related
-let CHAT_USERNAME = null; // dùng tên đăng nhập để hiển thị
+let CHAT_USERNAME = null;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+/** Simple escape để tránh chèn HTML trực tiếp */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 function appendChatMessage(sender, message, isLocal) {
   const box = document.getElementById('chatBox');
@@ -293,34 +633,555 @@ function resetChatBox() {
   if (box) box.innerHTML = '';
 }
 
-// Simple escape để tránh chèn HTML trực tiếp
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+// --- Data channel helpers (chat + control messages)
+function safeParseJson(text) {
+  try { return JSON.parse(text); } catch (e) { return null; }
 }
 
+async function publishDataObject(obj) {
+  if (!currentRoom || !currentRoom.localParticipant) return;
+  try {
+    const encoded = textEncoder.encode(JSON.stringify(obj));
+    await currentRoom.localParticipant.publishData(encoded, { reliable: true });
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function broadcastScreenShareClaim(startedAt) {
+  if (!currentRoom) return;
+  await publishDataObject({
+    type: 'screen_share_claim',
+    ts: Number(startedAt || Date.now()),
+    sid: currentRoom.localParticipant.sid,
+    sender: CHAT_USERNAME || currentRoom.localParticipant.identity || 'User'
+  });
+}
+
+async function broadcastScreenShareRelease() {
+  if (!currentRoom) return;
+  await publishDataObject({
+    type: 'screen_share_release',
+    ts: Date.now(),
+    sid: currentRoom.localParticipant.sid,
+    sender: CHAT_USERNAME || currentRoom.localParticipant.identity || 'User'
+  });
+}
+
+window.__roomCopy_inFlight = false;
+
 document.addEventListener('DOMContentLoaded', () => {
+  // --- UI refs
   const toggleCameraBtn  = document.getElementById("toggleCameraBtn");
-  const toggleCameraIcon = toggleCameraBtn
-    ? toggleCameraBtn.querySelector('.material-symbols-outlined')
-    : null;
-    
+  const toggleCameraIcon = toggleCameraBtn ? toggleCameraBtn.querySelector('.material-symbols-outlined') : null;
+
   const toggleMicBtn  = document.getElementById("toggleMicBtn");
-  const toggleMicIcon = toggleMicBtn
-    ? toggleMicBtn.querySelector('.material-symbols-outlined')
-    : null;
+  const toggleMicIcon = toggleMicBtn ? toggleMicBtn.querySelector('.material-symbols-outlined') : null;
 
   const toggleSpeakerBtn  = document.getElementById("toggleSpeakerBtn");
-  const toggleSpeakerIcon = toggleSpeakerBtn
-  ? toggleSpeakerBtn.querySelector('.material-symbols-outlined')
-  : null;
+  const toggleSpeakerIcon = toggleSpeakerBtn ? toggleSpeakerBtn.querySelector('.material-symbols-outlined') : null;
 
   const switchCameraBtn  = document.getElementById("switchCameraBtn");
-  const switchCameraIcon = switchCameraBtn
-    ? switchCameraBtn.querySelector('.material-symbols-outlined')
-    : null;
+  const toggleScreenBtn  = document.getElementById("toggleScreenBtn");
+  const toggleScreenIcon = toggleScreenBtn ? toggleScreenBtn.querySelector('.material-symbols-outlined') : null;
+
+  // Stage layout refs
+  const stageEl      = document.getElementById('stage');
+  const screenPaneEl = document.getElementById('screenPane');
+  const usersPaneEl  = document.getElementById('usersPane');
+  const splitterEl   = document.getElementById('splitter');
+  const screenSlotEl = document.getElementById('screenSlot');
+  const videosEl     = document.getElementById('videos');
+
+  // Participant UI state
+  const participantTiles = new Map();   // sid -> tileEl
+  const participantNames = new Map();   // sid -> string
+  const screenShares     = new Map();   // sid -> { track, el, name, publication? }
+  let activeScreenSid = null;
+
+  // Screen tile (left pane)
+  const screenTileEl = document.createElement('div');
+  screenTileEl.className = 'screen-tile';
+  screenTileEl.innerHTML = `
+<div class="name-tag"></div>
+<div class="media"></div>
+<div class="screen-zoom-controls">
+  <button id="zoomOutBtn" class="zoom-btn" title="Zoom out">
+    <span class="material-symbols-outlined">zoom_out</span>
+  </button>
+  <button id="zoomInBtn" class="zoom-btn" title="Zoom in">
+    <span class="material-symbols-outlined">zoom_in</span>
+  </button>
+</div>
+  `;
+
+
+// --- Screen zoom controls (phóng to / thu nhỏ) + drag to move
+const zoomInBtn  = screenTileEl.querySelector('#zoomInBtn');
+const zoomOutBtn = screenTileEl.querySelector('#zoomOutBtn');
+
+let screenZoom = 1;
+const SCREEN_ZOOM_MIN  = 1;
+const SCREEN_ZOOM_MAX  = 3;
+const SCREEN_ZOOM_STEP = 0.25;
+let lastRenderedScreenSid = null;
+
+// pan state (only meaningful when zoom > 1)
+let panX = 0;
+let panY = 0;
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function updatePannableUI() {
+  if (screenZoom > 1) screenTileEl.classList.add('is-pannable');
+  else screenTileEl.classList.remove('is-pannable', 'is-grabbing');
+}
+
+function clampPanToBounds() {
+  const rect = screenTileEl.getBoundingClientRect();
+  const maxX = (rect.width  * (screenZoom - 1)) / 2;
+  const maxY = (rect.height * (screenZoom - 1)) / 2;
+  panX = clamp(panX, -maxX, maxX);
+  panY = clamp(panY, -maxY, maxY);
+}
+
+function applyTransformToActiveScreen() {
+  const item = activeScreenSid ? screenShares.get(activeScreenSid) : null;
+  if (!item || !item.el) return;
+
+  if (screenZoom <= 1) { panX = 0; panY = 0; }
+  clampPanToBounds();
+
+  item.el.style.transform = `translate(${panX}px, ${panY}px) scale(${screenZoom})`;
+  item.el.style.transformOrigin = 'center center';
+  updatePannableUI();
+}
+
+function applyZoomToActiveScreen() {
+  try {
+    // if active changed, reset zoom + pan
+    if (activeScreenSid !== lastRenderedScreenSid) {
+      screenZoom = 1;
+      panX = 0; panY = 0;
+      lastRenderedScreenSid = activeScreenSid;
+      updateZoomButtons();
+      updatePannableUI();
+    }
+    applyTransformToActiveScreen();
+  } catch (e) {}
+}
+
+function updateZoomButtons() {
+  if (zoomOutBtn) zoomOutBtn.disabled = (screenZoom <= SCREEN_ZOOM_MIN + 1e-9);
+  if (zoomInBtn)  zoomInBtn.disabled  = (screenZoom >= SCREEN_ZOOM_MAX - 1e-9);
+}
+
+function resetScreenZoomAndPan() {
+  screenZoom = 1;
+  panX = 0; panY = 0;
+  applyTransformToActiveScreen();
+  updateZoomButtons();
+}
+
+function resetScreenZoom() { resetScreenZoomAndPan(); }
+
+if (zoomInBtn) {
+  zoomInBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    screenZoom = clamp(screenZoom + SCREEN_ZOOM_STEP, SCREEN_ZOOM_MIN, SCREEN_ZOOM_MAX);
+    applyTransformToActiveScreen();
+    updateZoomButtons();
+  });
+}
+
+if (zoomOutBtn) {
+  zoomOutBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    screenZoom = clamp(screenZoom - SCREEN_ZOOM_STEP, SCREEN_ZOOM_MIN, SCREEN_ZOOM_MAX);
+    if (screenZoom <= 1) { panX = 0; panY = 0; }
+    applyTransformToActiveScreen();
+    updateZoomButtons();
+  });
+}
+
+// Drag to move when zooming in
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+let panBaseX = 0;
+let panBaseY = 0;
+
+screenTileEl.addEventListener('pointerdown', (e) => {
+  if (screenZoom <= 1) return;
+  if (e.target && e.target.closest && e.target.closest('.screen-zoom-controls')) return;
+
+  isPanning = true;
+  screenTileEl.classList.add('is-grabbing');
+  panStartX = e.clientX;
+  panStartY = e.clientY;
+  panBaseX = panX;
+  panBaseY = panY;
+
+  try { screenTileEl.setPointerCapture(e.pointerId); } catch (err) {}
+  e.preventDefault();
+});
+
+screenTileEl.addEventListener('pointermove', (e) => {
+  if (!isPanning) return;
+  const dx = e.clientX - panStartX;
+  const dy = e.clientY - panStartY;
+  panX = panBaseX + dx;
+  panY = panBaseY + dy;
+  applyTransformToActiveScreen();
+  e.preventDefault();
+});
+
+function endPan(e) {
+  if (!isPanning) return;
+  isPanning = false;
+  screenTileEl.classList.remove('is-grabbing');
+  try { if (e && e.pointerId != null) screenTileEl.releasePointerCapture(e.pointerId); } catch (err) {}
+}
+
+screenTileEl.addEventListener('pointerup', endPan);
+screenTileEl.addEventListener('pointercancel', endPan);
+
+// keep pan within bounds after resizing/splitting
+window.addEventListener('resize', () => {
+  applyTransformToActiveScreen();
+});
+
+updateZoomButtons();
+updatePannableUI();
+
+
+  function getDisplayName(participant) {
+    // ưu tiên CHAT_USERNAME cho local (đỡ bị sid/identity lạ)
+    if (currentRoom && participant && participant.sid === currentRoom.localParticipant?.sid) {
+      return CHAT_USERNAME || participant.name || participant.identity || 'You';
+    }
+    return (participant && (participant.name || participant.identity)) ? (participant.name || participant.identity) : 'User';
+  }
+
+  function getCameraPlaceholderHtml() {
+    return `
+      <div class="placeholder">
+        <span class="material-symbols-outlined">videocam_off</span>
+        <div>Camera off</div>
+      </div>
+    `;
+  }
+
+  
+  function updateMicIndicator(sid, muted) {
+    const tile = participantTiles.get(sid);
+    if (!tile) return;
+    const badge = tile.querySelector('.mic-badge');
+    const icon = tile.querySelector('.mic-icon');
+    if (!badge || !icon) return;
+
+    const isMuted = !!muted;
+    icon.textContent = isMuted ? 'mic_off' : 'mic';
+    badge.classList.toggle('is-muted', isMuted);
+    badge.title = isMuted ? 'Mic muted' : 'Mic on';
+  }
+
+  function getTrackPublicationsSafe(participant) {
+    if (!participant) return [];
+    try {
+      if (typeof participant.getTrackPublications === 'function') {
+        return participant.getTrackPublications() || [];
+      }
+    } catch (e) {}
+
+    const m = participant.tracks || participant.trackPublications || participant._trackPublications;
+    try {
+      if (m && typeof m.values === 'function') return Array.from(m.values());
+    } catch (e) {}
+    return [];
+  }
+
+  function updateMicIndicatorFromParticipant(participant) {
+    if (!participant) return;
+    const sid = participant.sid;
+    const pubs = getTrackPublicationsSafe(participant).filter(p => p && p.kind === 'audio');
+
+    // If there's no audio publication => treat as muted (mic off)
+    let muted = true;
+    if (pubs.length) {
+      // If any audio pub is NOT muted => mic is on
+      muted = pubs.every(p => !!p.isMuted);
+    }
+
+    updateMicIndicator(sid, muted);
+  }
+
+  const audioBound = new WeakSet();
+  function bindAudioIndicator(participant) {
+    if (!participant || audioBound.has(participant)) return;
+    audioBound.add(participant);
+
+    // apply current state
+    try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+
+    // listen changes
+    try {
+      participant.on('trackMuted', (pub) => {
+        if (pub && pub.kind === 'audio') updateMicIndicatorFromParticipant(participant);
+      });
+      participant.on('trackUnmuted', (pub) => {
+        if (pub && pub.kind === 'audio') updateMicIndicatorFromParticipant(participant);
+      });
+      participant.on('trackPublished', (pub) => {
+        if (pub && pub.kind === 'audio') updateMicIndicatorFromParticipant(participant);
+      });
+      participant.on('trackUnpublished', (pub) => {
+        if (pub && pub.kind === 'audio') updateMicIndicatorFromParticipant(participant);
+      });
+    } catch (e) {}
+  }
+function setStageScreenVisible(visible) {
+    if (!screenPaneEl || !splitterEl) return;
+
+    if (visible) {
+      screenPaneEl.classList.remove('is-hidden');
+      splitterEl.classList.remove('is-hidden');
+    } else {
+      screenPaneEl.classList.add('is-hidden');
+      splitterEl.classList.add('is-hidden');
+
+      // dọn screen slot
+      try {
+        const media = screenTileEl.querySelector('.media');
+        if (media) media.innerHTML = '';
+      } catch (e) {}
+      activeScreenSid = null;
+      lastRenderedScreenSid = null;
+      screenZoom = 1;
+      panX = 0; panY = 0;
+      updateZoomButtons();
+      updatePannableUI();
+      try { screenTileEl.classList.remove('is-speaking'); } catch (e) {}
+    }
+  }
+
+  function pickNewestScreenSid() {
+    let last = null;
+    for (const sid of screenShares.keys()) last = sid;
+    return last;
+  }
+
+  function renderActiveScreen() {
+    const hasScreen = screenShares.size > 0;
+    setStageScreenVisible(hasScreen);
+
+    if (!hasScreen) return;
+
+    // chọn active nếu chưa có hoặc bị mất
+    if (!activeScreenSid || !screenShares.has(activeScreenSid)) {
+      activeScreenSid = pickNewestScreenSid();
+    }
+    const item = activeScreenSid ? screenShares.get(activeScreenSid) : null;
+    if (activeScreenSid !== lastRenderedScreenSid) {
+      screenZoom = 1;
+      panX = 0; panY = 0;
+      lastRenderedScreenSid = activeScreenSid;
+      updateZoomButtons();
+      updatePannableUI();
+    }
+    if (!item) return;
+
+    // attach vào screen tile
+    const nameTag = screenTileEl.querySelector('.name-tag');
+    const media   = screenTileEl.querySelector('.media');
+    if (nameTag) nameTag.textContent = `${item.name} (Screen)`;
+    if (media) {
+      media.innerHTML = '';
+      
+      media.appendChild(item.el);
+      applyZoomToActiveScreen();
+
+      // speaking highlight for current screen sharer
+      try {
+        const p = (currentRoom && currentRoom.localParticipant && currentRoom.localParticipant.sid === activeScreenSid)
+          ? currentRoom.localParticipant
+          : (currentRoom && currentRoom.participants && currentRoom.participants.get(activeScreenSid));
+        screenTileEl.classList.toggle('is-speaking', !!(p && p.isSpeaking));
+      } catch (e) {}
+    }
+
+    // đảm bảo tile nằm trong slot
+    if (screenSlotEl && !screenSlotEl.contains(screenTileEl)) {
+      screenSlotEl.innerHTML = '';
+      screenSlotEl.appendChild(screenTileEl);
+    }
+  }
+
+
+  // Keep bandwidth low: subscribe only the active screen-share track (best-effort).
+  // NOTE: This does NOT force-quit remote sharing on server; it only stops receiving old screen tracks quickly.
+  // The actual "single active sharer" is enforced cooperatively via data channel claim messages.
+  function setOnlyActiveScreenSubscribed() {
+    if (!currentRoom) return;
+    try {
+      screenShares.forEach((item, sid) => {
+        const pub = item && item.publication;
+        if (!pub || typeof pub.setSubscribed !== 'function') return;
+        const shouldSub = (sid === activeScreenSid);
+        try { pub.setSubscribed(!!shouldSub); } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
+
+  function ensureParticipantTile(sid, name) {
+    if (!videosEl) return null;
+
+    let tile = participantTiles.get(sid);
+    if (tile) {
+      const tag = tile.querySelector('.name-tag');
+      if (tag) tag.textContent = name;
+      participantNames.set(sid, name);
+      return tile;
+    }
+
+    tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.dataset.sid = sid;
+    tile.innerHTML = `
+      <div class="name-tag"></div>
+      <div class="media">${getCameraPlaceholderHtml()}</div>
+      <div class="mic-badge" title="Microphone">
+        <span class="material-symbols-outlined mic-icon">mic_off</span>
+      </div>
+    `;
+
+    const tag = tile.querySelector('.name-tag');
+    if (tag) tag.textContent = name;
+
+    participantTiles.set(sid, tile);
+    participantNames.set(sid, name);
+
+    videosEl.appendChild(tile);
+    // default: unknown mic state => show muted until we can read publications
+    try { updateMicIndicator(sid, true); } catch (e) {}
+    return tile;
+  }
+
+  function attachCameraVideoToTile(sid, name, videoEl, isLocal) {
+    const tile = ensureParticipantTile(sid, name);
+    if (!tile) return;
+
+    const media = tile.querySelector('.media');
+    if (!media) return;
+
+    // chỉ giữ 1 camera video
+    media.innerHTML = '';
+
+    // dataset để apply speaker mute/cleanup
+    videoEl.dataset.participant = sid;
+    videoEl.dataset.source = 'camera';
+
+    // mirror cho local cam trước
+    if (isLocal && cameraFacingMode === 'user') {
+      videoEl.classList.add('mirror-video');
+    } else {
+      videoEl.classList.remove('mirror-video');
+    }
+
+    // Auto adjust portrait/landscape for camera tile
+    const applyOrientation = () => {
+      const w = Number(videoEl.videoWidth || 0);
+      const h = Number(videoEl.videoHeight || 0);
+      if (!w || !h) return;
+
+      // portrait (mobile) => contain to avoid cropping
+      tile.classList.toggle('is-portrait', h > w);
+    };
+
+    // Some browsers only know dimensions after metadata is loaded
+    try { videoEl.addEventListener('loadedmetadata', applyOrientation); } catch (e) {}
+    // When track dimensions change (rotation, device switch)
+    try { videoEl.addEventListener('resize', applyOrientation); } catch (e) {}
+    // Best-effort fallback
+    setTimeout(applyOrientation, 200);
+
+    media.appendChild(videoEl);
+    applyOrientation();
+  }
+
+  function removeCameraFromTile(sid) {
+    const tile = participantTiles.get(sid);
+    if (!tile) return;
+    const media = tile.querySelector('.media');
+    if (!media) return;
+    media.innerHTML = getCameraPlaceholderHtml();
+    tile.classList.remove('is-portrait');
+  }
+
+  function removeParticipantTile(sid) {
+    const tile = participantTiles.get(sid);
+    if (tile) {
+      try { tile.remove(); } catch (e) {}
+    }
+    participantTiles.delete(sid);
+    participantNames.delete(sid);
+  }
+
+
+  // ---- Speaking indicator (active speaker border) ----
+  const speakingBound = new WeakSet();
+
+  function bindSpeakingIndicator(participant) {
+    if (!participant || speakingBound.has(participant)) return;
+    speakingBound.add(participant);
+
+    // apply current state (best-effort)
+    try {
+      const tile = participantTiles.get(participant.sid);
+      if (tile) tile.classList.toggle('is-speaking', !!participant.isSpeaking);
+    } catch (e) {}
+
+    participant.on('isSpeakingChanged', (speaking) => {
+      const tile = participantTiles.get(participant.sid);
+      if (tile) tile.classList.toggle('is-speaking', !!speaking);
+
+      // if this participant is currently the active screen sharer, also highlight screen tile
+      if (participant.sid === activeScreenSid) {
+        screenTileEl.classList.toggle('is-speaking', !!speaking);
+      }
+    });
+  }
+
+  function updateSpeakingFromActiveSpeakers(speakers) {
+    const set = new Set((speakers || []).map(p => p.sid));
+
+    // ensure tiles exist and speaking listener is bound
+    (speakers || []).forEach(p => {
+      try {
+        const name = getDisplayName(p);
+        ensureParticipantTile(p.sid, name);
+        bindSpeakingIndicator(p);
+      } catch (e) {}
+    });
+
+    participantTiles.forEach((tile, sid) => {
+      tile.classList.toggle('is-speaking', set.has(sid));
+    });
+
+    if (activeScreenSid) {
+      screenTileEl.classList.toggle('is-speaking', set.has(activeScreenSid));
+    } else {
+      screenTileEl.classList.remove('is-speaking');
+    }
+  }
+
+  function cleanupParticipantMediaElements(sid) {
+    // gỡ tất cả el đã attach có data-participant
+    document.querySelectorAll(`[data-participant="${sid}"]`).forEach(el => {
+      try { el.remove(); } catch (e) {}
+    });
+  }
 
   function applySpeakerMuteToCallMedia() {
     // Mute/unmute tất cả media của participants trong cuộc gọi
@@ -330,87 +1191,204 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-    // Reset toàn bộ UI call -----
-  function resetCallUI() {
-    // Xoá toàn bộ video UI
-    const videosEl = document.getElementById('videos');
-    if (videosEl) {
-      videosEl.innerHTML = '';
-    }
-
-    // Disable nút End Call
-    const endBtn = document.getElementById('endBtn');
-    if (endBtn) {
-      endBtn.disabled = true;
-    }
-
-    // Chat: clear + disable gửi
-    resetChatBox();
-    const sendBtn = document.getElementById('sendChatBtn');
-    if (sendBtn) {
-      sendBtn.disabled = true;
-    }
-
-    // Camera
-    if (toggleCameraBtn) {
-      toggleCameraBtn.disabled = true;
-    }
-    cameraEnabled = true;
-    if (toggleCameraIcon) {
-      toggleCameraIcon.textContent = 'videocam';
-    }
-
-    // Mic
-    if (toggleMicBtn) {
-      toggleMicBtn.disabled = true;
-    }
-    micEnabled = true;
-    if (toggleMicIcon) {
-      toggleMicIcon.textContent = 'mic';
-    }
-
-    // Switch camera
-    if (switchCameraBtn) {
-      switchCameraBtn.disabled = true;
-    }
-    videoDevices = [];
-    currentVideoDeviceIndex = 0;
-
-    // Loa cuộc gọi
-    if (toggleSpeakerBtn) {
-      toggleSpeakerBtn.disabled = true;
-    }
-    speakerEnabled = true;
-    if (toggleSpeakerIcon) {
-      toggleSpeakerIcon.textContent = 'volume_up';
-    }
-    applySpeakerMuteToCallMedia();
-
-    // Dọn thêm state local video (cho sạch sẽ)
-    localVideoTrack = null;
-    localVideoElement = null;
-    cameraFacingMode = 'user';
-  }
-
-  // ----- Helper: cập nhật UI cho nút mic -----
   function updateMicUI() {
     if (!toggleMicBtn) return;
-
-    // icon + tooltip
-    if (toggleMicIcon) {
-      toggleMicIcon.textContent = micEnabled ? 'mic' : 'mic_off';
-    }
+    if (toggleMicIcon) toggleMicIcon.textContent = micEnabled ? 'mic' : 'mic_off';
     toggleMicBtn.title = micEnabled ? 'Mute microphone' : 'Unmute microphone';
+    if (micEnabled) toggleMicBtn.classList.remove('is-muted');
+    else toggleMicBtn.classList.add('is-muted');
 
-    // trạng thái màu (class is-muted)
-    if (micEnabled) {
-      toggleMicBtn.classList.remove('is-muted');
-    } else {
-      toggleMicBtn.classList.add('is-muted');
+    // also update local tile mic indicator
+    try {
+      if (currentRoom && currentRoom.localParticipant) {
+        updateMicIndicator(currentRoom.localParticipant.sid, (!localHasAudio) || (!micEnabled));
+      }
+    } catch (e) {}
+  }
+
+  function updateCameraUI() {
+    if (!toggleCameraBtn) return;
+    if (toggleCameraIcon) toggleCameraIcon.textContent = cameraEnabled ? 'videocam' : 'videocam_off';
+    toggleCameraBtn.title = cameraEnabled ? 'Turn camera off' : 'Turn camera on';
+  }
+
+  function updateScreenUI() {
+    if (!toggleScreenBtn) return;
+    if (toggleScreenIcon) toggleScreenIcon.textContent = screenShareEnabled ? 'stop_screen_share' : 'screen_share';
+    toggleScreenBtn.title = screenShareEnabled ? 'Stop sharing' : 'Share screen';
+  }
+
+  async function disableLocalCamera() {
+    if (!currentRoom) return;
+    if (!cameraEnabled) return;
+
+    try {
+      if (localVideoTrack) {
+        try { currentRoom.localParticipant.unpublishTrack(localVideoTrack); } catch (e) {}
+        try { localVideoTrack.stop(); } catch (e) {}
+      }
+      if (localVideoElement) {
+        try { localVideoElement.remove(); } catch (e) {}
+      }
+
+      removeCameraFromTile(currentRoom.localParticipant.sid);
+
+      localVideoTrack = null;
+      localVideoElement = null;
+
+      cameraEnabled = false;
+      updateCameraUI();
+    } catch (e) {
+      console.error("Disable camera error:", e);
     }
   }
 
-  // Đăng nhập
+  async function enableLocalCamera() {
+    if (!currentRoom) return;
+    if (cameraEnabled) return;
+
+    try {
+      // tạo track mới (tôn trọng facingMode hiện tại)
+      const track = await LivekitClient.createLocalVideoTrack({ facingMode: cameraFacingMode });
+      await currentRoom.localParticipant.publishTrack(track);
+
+      const el = track.attach();
+      el.dataset.participant = currentRoom.localParticipant.sid;
+      el.dataset.source = 'camera';
+
+      localVideoTrack = track;
+      localVideoElement = el;
+
+      const name = CHAT_USERNAME || currentRoom.localParticipant.identity || 'You';
+      attachCameraVideoToTile(currentRoom.localParticipant.sid, name, el, true);
+
+      cameraEnabled = true;
+      updateCameraUI();
+      applySpeakerMuteToCallMedia();
+    } catch (e) {
+      console.error("Enable camera error:", e);
+    }
+  }
+
+  async function toggleLocalCamera() {
+    if (!currentRoom) return;
+    if (cameraEnabled) await disableLocalCamera();
+    else await enableLocalCamera();
+  }
+
+  async function stopScreenShareInternal() {
+    const hadLocalShareIntent = !!myScreenShareStartedAt;
+    startingScreenShare = false;
+    myScreenShareStartedAt = null;
+
+    // unpublish + stop tracks
+    if (currentRoom && currentRoom.localParticipant && localScreenTracks.length) {
+      for (const t of localScreenTracks) {
+        try { currentRoom.localParticipant.unpublishTrack(t); } catch (e) {}
+        try { if (typeof t.stop === 'function') t.stop(); } catch (e) {}
+      }
+    }
+    localScreenTracks = [];
+
+    // remove UI element + map
+    if (currentRoom && currentRoom.localParticipant) {
+      const sid = currentRoom.localParticipant.sid;
+      const item = screenShares.get(sid);
+      if (item && item.el) {
+        try { item.el.remove(); } catch (e) {}
+      }
+      screenShares.delete(sid);
+
+      if (activeScreenSid === sid) {
+        activeScreenSid = null;
+      lastRenderedScreenSid = null;
+      screenZoom = 1;
+      panX = 0; panY = 0;
+      updateZoomButtons();
+      updatePannableUI();
+      }
+    }
+
+    screenShareEnabled = false;
+    updateScreenUI();
+    renderActiveScreen();
+
+    // thông báo nhả quyền share (best-effort)
+    try { if (hadLocalShareIntent) await broadcastScreenShareRelease(); } catch (e) {}
+
+    // restore camera nếu trước đó camera đang bật
+    try {
+      if (toggleCameraBtn) toggleCameraBtn.disabled = false;
+
+      if (cameraDisabledByScreenShare && cameraPrevEnabledBeforeScreen) {
+        await enableLocalCamera();
+      }
+    } catch (e) {}
+
+    cameraDisabledByScreenShare = false;
+    cameraPrevEnabledBeforeScreen = null;
+  }
+
+  // --- Resizer (splitter)
+  function initSplitter() {
+    if (!splitterEl || !stageEl || !screenPaneEl) return;
+
+    let dragging = false;
+    let axis = 'x';
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    splitterEl.addEventListener('pointerdown', (e) => {
+      if (splitterEl.classList.contains('is-hidden')) return;
+      dragging = true;
+      splitterEl.setPointerCapture(e.pointerId);
+
+      const dir = getComputedStyle(stageEl).flexDirection;
+      axis = (dir === 'column') ? 'y' : 'x';
+
+      e.preventDefault();
+    });
+
+    splitterEl.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const rect = stageEl.getBoundingClientRect();
+
+      if (axis === 'x') {
+        const x = e.clientX - rect.left;
+        const min = 240;
+        const max = rect.width - 240;
+        const w = clamp(x, min, max);
+        screenPaneEl.style.flexBasis = `${w}px`;
+        try { localStorage.setItem('screenPaneBasisPx', String(w)); } catch (e) {}
+      } else {
+        const y = e.clientY - rect.top;
+        const min = 220;
+        const max = rect.height - 220;
+        const h = clamp(y, min, max);
+        screenPaneEl.style.flexBasis = `${h}px`;
+        try { localStorage.setItem('screenPaneBasisPxY', String(h)); } catch (e) {}
+      }
+    });
+
+    const endDrag = () => { dragging = false; };
+    splitterEl.addEventListener('pointerup', endDrag);
+    splitterEl.addEventListener('pointercancel', endDrag);
+
+    // restore basis
+    try {
+      const dir = getComputedStyle(stageEl).flexDirection;
+      if (dir === 'column') {
+        const h = Number(localStorage.getItem('screenPaneBasisPxY') || '');
+        if (h) screenPaneEl.style.flexBasis = `${h}px`;
+      } else {
+        const w = Number(localStorage.getItem('screenPaneBasisPx') || '');
+        if (w) screenPaneEl.style.flexBasis = `${w}px`;
+      }
+    } catch (e) {}
+  }
+  initSplitter();
+
+  // -------- Login
   document.getElementById("loginBtn").onclick = async () => {
     try {
       const username = document.getElementById("username").value;
@@ -438,17 +1416,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Copy Room ID
-  document.getElementById("copyRoom").onclick = () => {
-    const roomId = document.getElementById("createdRoomId").innerText;
-    if (roomId) {
-      navigator.clipboard.writeText(roomId).then(() => {
-        alert("Copied Room ID to clipboard: " + roomId);
-      });
-    }
-  };
+  // Copy Room ID  
+document.getElementById("copyRoom").onclick = (e) => {
+  if (window.__roomCopy_inFlight) {
+    return;
+  }
 
-  // Gửi chat khi nhấn Enter
+  window.__roomCopy_inFlight = true;
+
+  const roomId = document.getElementById("createdRoomId")?.innerText?.trim();
+  if (!roomId) {
+    window.__roomCopy_inFlight = false;
+    return;
+  }
+
+  const btn  = e.currentTarget;           // <- button được click
+  const icon = btn.querySelector("span"); // <- tìm icon trong button
+
+  navigator.clipboard.writeText(roomId)
+    .then(() => {
+      icon.textContent = "check";
+      setTimeout(() => {
+        icon.textContent = "content_copy";
+        window.__roomCopy_inFlight = false;
+      }, 3000);
+    })
+    .catch((err) => {
+      console.log("Clipboard error:", err);
+      window.__roomCopy_inFlight = false;
+    });
+};
+
+  // Send on Enter
   document.getElementById('chatInput').addEventListener('keydown', function(event) {
     if (event.key === 'Enter') {
       event.preventDefault();
@@ -461,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(CREATE_ROOM_URL, {
         method: "POST",
-        headers: { 
+        headers: {
           "Authorization": "Bearer " + SIGNAL_JWT,
           "Content-Type": "application/json"
         },
@@ -480,19 +1479,65 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Join phòng
+  // Reset toàn bộ UI call
+  function resetCallUI() {
+    // tiles + screen slot
+    if (videosEl) videosEl.innerHTML = '';
+    if (screenSlotEl) screenSlotEl.innerHTML = '';
+    participantTiles.clear();
+    participantNames.clear();
+    screenShares.clear();
+    activeScreenSid = null;
+    setStageScreenVisible(false);
+    try { screenTileEl.classList.remove('is-speaking'); } catch (e) {}
+
+    // disable End Call
+    const endBtn = document.getElementById('endBtn');
+    if (endBtn) endBtn.disabled = true;
+
+    // chat
+    resetChatBox();
+    const sendBtn = document.getElementById('sendChatBtn');
+    if (sendBtn) sendBtn.disabled = true;
+
+    // buttons
+    if (toggleCameraBtn) toggleCameraBtn.disabled = true;
+    if (switchCameraBtn) switchCameraBtn.disabled = true;
+    if (toggleMicBtn) toggleMicBtn.disabled = true;
+    if (toggleSpeakerBtn) toggleSpeakerBtn.disabled = true;
+    if (toggleScreenBtn) toggleScreenBtn.disabled = true;
+
+    // state
+    cameraEnabled = true;
+    micEnabled = true;
+    speakerEnabled = true;
+    screenShareEnabled = false;
+    cameraFacingMode = 'user';
+
+    localVideoTrack = null;
+    localVideoElement = null;
+
+    localScreenTracks = [];
+    cameraPrevEnabledBeforeScreen = null;
+    cameraDisabledByScreenShare = false;
+
+    updateCameraUI();
+    updateMicUI();
+    if (toggleSpeakerIcon) toggleSpeakerIcon.textContent = 'volume_up';
+    if (toggleSpeakerBtn) toggleSpeakerBtn.title = 'Mute call audio';
+    updateScreenUI();
+  }
+
+  // ---- Join room
   document.getElementById("joinBtn").onclick = async () => {
     try {
       const roomId = document.getElementById("roomId").value.trim();
-      if (!roomId) {
-        alert("Please enter a room ID first!");
-        return;
-      }
+      if (!roomId) { alert("Please enter a room ID first!"); return; }
 
-      // 1. Xin LiveKit token
+      // token
       const res = await fetch(PORTAL_URL, {
         method: "POST",
-        headers: { 
+        headers: {
           "Authorization": "Bearer " + SIGNAL_JWT,
           "Content-Type": "application/json"
         },
@@ -500,152 +1545,265 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       let data = null;
-      try {
-        data = await res.json();
-      } catch (e) {
-        console.error("Parse token response failed:", e);
-      }
+      try { data = await res.json(); } catch (e) {}
 
-      // Nếu request lỗi hoặc thiếu dữ liệu cần thiết → stop
       if (!res.ok || !data || !data.livekit_url || !data.livekit_jwt) {
         let msg = "Không thể lấy token kết nối.";
-        if (data && (data.message || data.error || data.detail)) {
-          msg = data.message || data.error || data.detail;
-        }
+        if (data && (data.message || data.error || data.detail)) msg = data.message || data.error || data.detail;
         alert("Join room failed: " + msg);
-
-        if (typeof resetCallUI === "function") {
-          resetCallUI();
-        }
-        return; // ❌ KHÔNG connect, KHÔNG mở cam local
+        resetCallUI();
+        return;
       }
-      
-      // 2. Tạo Room instance
+
+      // create room
       const room = new LivekitClient.Room();
-      currentRoom = room; // lưu để end call
+      currentRoom = room;
 
-      // Khi mất kết nối (host xóa phòng, bị kick, lỗi unrecoverable...)
+      // room disconnected
       room.on('disconnected', (reason) => {
-        console.log('[Room disconnected]', {
-          reason,
-          reasonName: LivekitClient.DisconnectReason
-            ? Object.keys(LivekitClient.DisconnectReason)
-                .find(k => LivekitClient.DisconnectReason[k] === reason)
-            : undefined,
-          roomState: room.state,
-        });
+        console.log('[Room disconnected]', reason);
+        currentRoom = null;
+        resetCallUI();
 
-        // Xoá toàn bộ video UI
-        document.getElementById('videos').innerHTML = '';
-        document.getElementById('endBtn').disabled = true;
-
-        // Chat: xóa luôn
-        resetChatBox();
-        const sendBtn = document.getElementById("sendChatBtn");
-        if (sendBtn) sendBtn.disabled = true;
-
-        if (toggleCameraBtn) {
-          toggleCameraBtn.disabled = true;
-        }
-        cameraEnabled = true;
-        if (toggleCameraIcon) {
-          toggleCameraIcon.textContent = 'videocam';
-        }
-
-        if (toggleMicBtn) {
-          toggleMicBtn.disabled = true;
-        }
-        micEnabled = true;
-        if (toggleMicIcon) {
-          toggleMicIcon.textContent = 'mic';
-        }
-
-        if (switchCameraBtn) {
-          switchCameraBtn.disabled = true;
-        }
-        videoDevices = [];
-        currentVideoDeviceIndex = 0;
-
-        if (toggleSpeakerBtn) {
-          toggleSpeakerBtn.disabled = true;
-        }
-        speakerEnabled = true;
-        if (toggleSpeakerIcon) {
-          toggleSpeakerIcon.textContent = 'volume_up';
-        }
-        applySpeakerMuteToCallMedia(); // để chắc ăn, nếu còn media
-        
-        if (reason === LivekitClient.DisconnectReason.ROOM_DELETED) {
+        if (reason === LivekitClient.DisconnectReason?.ROOM_DELETED) {
           alert("Host ended the room.");
-        } else if (reason === LivekitClient.DisconnectReason.DUPLICATE_IDENTITY) {
+        } else if (reason === LivekitClient.DisconnectReason?.DUPLICATE_IDENTITY) {
           alert("You were disconnected because your identity is used elsewhere.");
-        } else if (reason === LivekitClient.DisconnectReason.JOIN_FAILURE) {
+        } else if (reason === LivekitClient.DisconnectReason?.JOIN_FAILURE) {
           alert("Cannot join this room. Please try again.");
-        } else {
-          // UNKNOWN / others → chỉ log, không alert
-          console.warn("Disconnected:", reason);
         }
       });
 
-      // 3. Event: khi có track remote
+      room.on('participantConnected', (participant) => {
+        const name = getDisplayName(participant);
+        ensureParticipantTile(participant.sid, name);
+        try { bindSpeakingIndicator(participant); } catch (e) {}
+        try { bindAudioIndicator(participant); } catch (e) {}
+      });
+
+room.on('participantDisconnected', (participant) => {
+        // remove tile + cleanup
+        removeParticipantTile(participant.sid);
+
+        // remove any screen share
+        const item = screenShares.get(participant.sid);
+        if (item && item.el) { try { item.el.remove(); } catch (e) {} }
+        screenShares.delete(participant.sid);
+        if (activeScreenSid === participant.sid) activeScreenSid = null;
+        renderActiveScreen();
+
+        cleanupParticipantMediaElements(participant.sid);
+      });
+
+
+      // --- Mic status indicator updates (best-effort across SDK versions)
+      try {
+        room.on('trackMuted', (...args) => {
+          const publication = args[0];
+          const participant = args[1] || args.find(a => a && a.sid);
+          if (publication && publication.kind === 'audio') {
+            try { bindAudioIndicator(participant); } catch (e) {}
+            try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+          }
+        });
+        room.on('trackUnmuted', (...args) => {
+          const publication = args[0];
+          const participant = args[1] || args.find(a => a && a.sid);
+          if (publication && publication.kind === 'audio') {
+            try { bindAudioIndicator(participant); } catch (e) {}
+            try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+          }
+        });
+        room.on('trackPublished', (...args) => {
+          const publication = args[0];
+          const participant = args[1] || args.find(a => a && a.sid);
+          if (publication && publication.kind === 'audio') {
+            try { bindAudioIndicator(participant); } catch (e) {}
+            try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+          }
+        });
+        room.on('trackUnpublished', (...args) => {
+          const publication = args[0];
+          const participant = args[1] || args.find(a => a && a.sid);
+          if (publication && publication.kind === 'audio') {
+            try { bindAudioIndicator(participant); } catch (e) {}
+            try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+          }
+        });
+      } catch (e) {}
+
+      function isScreenPublication(pub) {
+        try {
+          const s = (pub && pub.source != null) ? String(pub.source).toLowerCase() : '';
+          // livekit thường dùng: screen_share, screenshare, screenShare...
+          return s.includes('screen');
+        } catch (e) {
+          return false;
+        }
+      }
+
       room.on('trackSubscribed', (track, publication, participant) => {
+        const name = getDisplayName(participant);
+        try { bindSpeakingIndicator(participant); } catch (e) {}
+
         if (track.kind === 'video') {
           const el = track.attach();
           el.dataset.participant = participant.sid;
-          document.getElementById('videos').appendChild(el);
+
+          if (isScreenPublication(publication)) {
+            el.dataset.source = 'screen';
+            // IMPORTANT: user join sau đôi khi không có participantConnected + vòng lặp participants chạy quá sớm.
+            // Do đó, khi nhận screen-share track cũng phải đảm bảo tile participant tồn tại,
+            // để hiển thị "Camera off" (placeholder) nếu user đó đang không publish camera.
+            ensureParticipantTile(participant.sid, name);
+            // lưu và render vào pane trái
+            screenShares.set(participant.sid, { track, el, name, publication });
+            activeScreenSid = participant.sid; // ưu tiên cái mới nhất
+
+            // giảm băng thông: chỉ subscribe active screen
+            setOnlyActiveScreenSubscribed();
+
+            renderActiveScreen();
+          } else {
+            el.dataset.source = 'camera';
+            attachCameraVideoToTile(participant.sid, name, el, false);
+          }
         } else if (track.kind === 'audio') {
           const el = track.attach();
           el.dataset.participant = participant.sid;
           el.style.display = 'none';
           document.body.appendChild(el);
 
-          // NEW: nếu loa đang tắt thì audio mới cũng phải tắt theo
+          // nếu loa đang tắt thì audio mới cũng phải tắt theo
           el.muted = !speakerEnabled;
+
+          // update mic indicator state
+          try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
         }
       });
 
-      // Participant leave → gỡ video element
-      room.on('participantDisconnected', (participant) => {
-        document.querySelectorAll(`[data-participant="${participant.sid}"]`)
-          .forEach(el => el.remove());
+      room.on('trackUnsubscribed', (track, publication, participant) => {
+        if (!participant) return;
+
+        if (track.kind === 'video') {
+          // detach() trả về list elements
+          try {
+            const els = track.detach();
+            (els || []).forEach(e => { try { e.remove(); } catch (err) {} });
+          } catch (e) {}
+
+          if (isScreenPublication(publication)) {
+            // remove map
+            screenShares.delete(participant.sid);
+            if (activeScreenSid === participant.sid) activeScreenSid = null;
+            renderActiveScreen();
+          } else {
+            // remove camera from tile (giữ tile + name)
+            removeCameraFromTile(participant.sid);
+          }
+        } else if (track.kind === 'audio') {
+          try {
+            const els = track.detach();
+            (els || []).forEach(e => { try { e.remove(); } catch (err) {} });
+          } catch (e) {}
+          try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+        }
       });
 
-      // Nhận data (chat) từ participant khác
-      room.on('dataReceived', (payload, participant, kind, topic) => {
+      // chat + control data
+      room.on('dataReceived', async (payload, participant) => {
         try {
           const text = textDecoder.decode(payload);
-          let msgObj = null;
-          try {
-            msgObj = JSON.parse(text);
-          } catch (e) {
-            // không phải JSON, fallback dùng raw text
+          const msgObj = safeParseJson(text);
+
+          // --- Control: single active screen sharer
+          if (msgObj && msgObj.type === 'screen_share_claim') {
+            // If someone else starts sharing, the previous sharer should stop (cooperative).
+            const fromSid = (participant && participant.sid) || msgObj.sid;
+            if (currentRoom && fromSid && fromSid !== currentRoom.localParticipant.sid) {
+              const otherTs = Number(msgObj.ts || 0);
+              const myTs = Number(myScreenShareStartedAt || 0);
+              const iAmSharingOrStarting = !!(screenShareEnabled || startingScreenShare);
+
+              if (iAmSharingOrStarting) {
+                // Rule: newer claim wins. If equal timestamp, tie-breaker by sid.
+                const shouldYield =
+                  (!myTs) ||
+                  (otherTs > myTs) ||
+                  (otherTs === myTs && String(fromSid) > String(currentRoom.localParticipant.sid));
+
+                if (shouldYield) {
+                  await stopScreenShareInternal();
+                }
+              }
+            }
+            return;
           }
 
+          if (msgObj && msgObj.type === 'screen_share_release') {
+            // nothing to do; track events will update UI
+            return;
+          }
+
+          // --- Chat
           if (msgObj && msgObj.type === 'chat') {
-            const senderName =
-              msgObj.sender ||
-              (participant && participant.identity) ||
-              'Peer';
+            const senderName = msgObj.sender || (participant && participant.identity) || 'Peer';
             appendChatMessage(senderName, msgObj.text || '', false);
           } else {
-            const senderName =
-              (participant && participant.identity) ||
-              'Peer';
+            const senderName = (participant && participant.identity) || 'Peer';
             appendChatMessage(senderName, text, false);
           }
         } catch (e) {
-          console.error('Decode chat failed:', e);
+          console.error('Decode data failed:', e);
         }
       });
 
-      // 4. Connect LiveKit
+
+      // active speakers (border highlight)
+      room.on('activeSpeakersChanged', (speakers) => {
+        try { updateSpeakingFromActiveSpeakers(speakers); } catch (e) {}
+      });
+
+      // connect
       await room.connect(data.livekit_url, data.livekit_jwt);
 
-      // 5. Publish local tracks
-      const localTracks = await LivekitClient.createLocalTracks({
-        audio: true,
-        video: { facingMode: cameraFacingMode }, // mặc định cam trước
-      });
+      // IMPORTANT: LiveKit thường KHÔNG bắn participantConnected cho những người đã có sẵn trong room.
+      // Vì vậy phải tạo tile cho toàn bộ participants hiện hữu ngay sau khi connect,
+      // kể cả user đang share screen và đã tắt/unpublish camera.
+      try {
+        for (const p of room.participants.values()) {
+          const name = getDisplayName(p);
+          ensureParticipantTile(p.sid, name);
+          try { bindSpeakingIndicator(p); } catch (e) {}
+          try { bindAudioIndicator(p); } catch (e) {}
+        }
+      } catch (e) {}
+      try { updateSpeakingFromActiveSpeakers(room.activeSpeakers || []); } catch (e) {}
+
+      // tạo tile local ngay
+      ensureParticipantTile(room.localParticipant.sid, CHAT_USERNAME || room.localParticipant.identity || 'You');
+      try { bindSpeakingIndicator(room.localParticipant); } catch (e) {}
+      try { bindAudioIndicator(room.localParticipant); } catch (e) {}
+
+      // publish local audio + video
+      let localTracks = [];
+      try {
+        localTracks = await LivekitClient.createLocalTracks({
+          audio: true,
+          video: { facingMode: cameraFacingMode },
+        });
+      } catch (e) {
+        console.warn("createLocalTracks(audio+video) failed, fallback audio-only:", e);
+        try {
+          localTracks = await LivekitClient.createLocalTracks({ audio: true, video: false });
+        } catch (e2) {
+          console.error("createLocalTracks(audio) failed:", e2);
+          localTracks = [];
+        }
+      }
+
+      // track presence flags
+      localHasAudio = (localTracks || []).some(t => t && t.kind === 'audio');
 
       for (const track of localTracks) {
         await room.localParticipant.publishTrack(track);
@@ -653,72 +1811,53 @@ document.addEventListener('DOMContentLoaded', () => {
         if (track.kind === 'video') {
           const el = track.attach();
           el.dataset.participant = room.localParticipant.sid;
+          el.dataset.source = 'camera';
 
-          // lưu lại để dùng cho flip camera
           localVideoTrack = track;
           localVideoElement = el;
 
-          // CHỈ mirror nếu đang dùng camera trước
-          if (cameraFacingMode === 'user') {
-            el.classList.add('mirror-video');
-          }
-
-          document.getElementById('videos').appendChild(el);
+          attachCameraVideoToTile(room.localParticipant.sid, CHAT_USERNAME || room.localParticipant.identity || 'You', el, true);
         }
-
-        // ⚠️ KHÔNG attach audio cho local
-        // if (track.kind === 'audio') {
-        //   // không track.attach() -> không tự nghe chính mình
-        // }
+        // local audio: không attach
       }
 
-      document.getElementById("endBtn").disabled = false;
 
-      // Chat: cho phép gửi khi đã connect
+      // ensure local mic indicator reflects current state
+      try { updateMicIndicator(room.localParticipant.sid, (!localHasAudio) || (!micEnabled)); } catch (e) {}
+
+      // state cameraEnabled dựa vào có localVideoTrack hay không
+      cameraEnabled = !!localVideoTrack;
+      updateCameraUI();
+
+      // enable UI
+      document.getElementById("endBtn").disabled = false;
       const sendBtn = document.getElementById("sendChatBtn");
       if (sendBtn) sendBtn.disabled = false;
 
+      if (toggleCameraBtn) toggleCameraBtn.disabled = false;
+      if (switchCameraBtn) switchCameraBtn.disabled = false;
+      if (toggleMicBtn) toggleMicBtn.disabled = false;
+      if (toggleScreenBtn) toggleScreenBtn.disabled = false;
+      if (toggleSpeakerBtn) toggleSpeakerBtn.disabled = false;
+
+      micEnabled = true;
+      updateMicUI();
+
+      speakerEnabled = true;
+      if (toggleSpeakerIcon) toggleSpeakerIcon.textContent = 'volume_up';
+      if (toggleSpeakerBtn) toggleSpeakerBtn.title = 'Mute call audio';
+      applySpeakerMuteToCallMedia();
+
+      screenShareEnabled = false;
+      updateScreenUI();
+
       console.log("Connected to room:", room.name);
-
-      if (toggleCameraBtn) {
-        cameraEnabled = true;
-        toggleCameraBtn.disabled = false;
-        if (toggleCameraIcon) {
-          toggleCameraIcon.textContent = 'videocam';
-        }
-        toggleCameraBtn.title = 'Turn camera off';
-      }
-
-      if (toggleMicBtn) {
-        micEnabled = true;
-        toggleMicBtn.disabled = false;
-        if (toggleMicIcon) {
-          toggleMicIcon.textContent = 'mic';
-        }
-        toggleMicBtn.title = 'Mute microphone';
-      }
-
-      // Chuẩn bị danh sách camera để switch trước/sau
-      if (switchCameraBtn) {
-        switchCameraBtn.disabled = false;
-      }
-
-      // NEW: bật nút mute speaker
-      if (toggleSpeakerBtn) {
-        speakerEnabled = true;
-        toggleSpeakerBtn.disabled = false;
-        if (toggleSpeakerIcon) {
-          toggleSpeakerIcon.textContent = 'volume_up';
-        }
-        toggleSpeakerBtn.title = 'Mute call audio';
-      }
-
     } catch (err) {
       console.error("Join failed:", err);
     }
   };
 
-  // Gửi tin nhắn chat
+  // Send chat
   document.getElementById("sendChatBtn").onclick = async () => {
     const input = document.getElementById("chatInput");
     if (!input) return;
@@ -732,16 +1871,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      const payloadObj = {
-        type: 'chat',
-        text: text,
-        sender: CHAT_USERNAME || 'User',
-        ts: Date.now()
-      };
-
+      const payloadObj = { type: 'chat', text, sender: CHAT_USERNAME || 'User', ts: Date.now() };
       const encoded = textEncoder.encode(JSON.stringify(payloadObj));
-
-      // Gửi data dạng reliable để chat không mất gói
       await currentRoom.localParticipant.publishData(encoded, { reliable: true });
 
       appendChatMessage('You', text, true);
@@ -755,46 +1886,29 @@ document.addEventListener('DOMContentLoaded', () => {
   if (toggleCameraBtn) {
     toggleCameraBtn.onclick = async () => {
       if (!currentRoom) return;
-      try {
-        // đảo trạng thái
-        cameraEnabled = !cameraEnabled;
-
-        // LiveKit sẽ mute/unmute track camera đang publish
-        await currentRoom.localParticipant.setCameraEnabled(cameraEnabled);
-
-        // cập nhật icon + tooltip
-        if (toggleCameraIcon) {
-          toggleCameraIcon.textContent = cameraEnabled ? 'videocam' : 'videocam_off';
-        }
-        toggleCameraBtn.title = cameraEnabled ? 'Turn camera off' : 'Turn camera on';
-      } catch (e) {
-        console.error("Toggle camera error:", e);
-      }
+      // nếu đang screen share thì khoá
+      if (screenShareEnabled) return;
+      await toggleLocalCamera();
     };
   }
 
-  // Switch camera (front/back)
+  // Switch camera front/back
   if (switchCameraBtn) {
     switchCameraBtn.onclick = async () => {
-      if (!localVideoTrack) return;
-
       // Đảo hướng: trước <-> sau
       cameraFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
 
       try {
-        await localVideoTrack.restartTrack({
-          facingMode: cameraFacingMode,
-        });
+        // nếu đang có track thì restart để đổi cam; nếu không, chỉ lưu mode (khi bật cam lại sẽ dùng)
+        if (localVideoTrack && typeof localVideoTrack.restartTrack === 'function') {
+          await localVideoTrack.restartTrack({ facingMode: cameraFacingMode });
 
-        // Cập nhật mirror cho video local
-        if (localVideoElement) {
-          if (cameraFacingMode === 'user') {
-            localVideoElement.classList.add('mirror-video');
-          } else {
-            localVideoElement.classList.remove('mirror-video');
+          // cập nhật mirror local
+          if (localVideoElement) {
+            if (cameraFacingMode === 'user') localVideoElement.classList.add('mirror-video');
+            else localVideoElement.classList.remove('mirror-video');
           }
         }
-
         console.log('Switched camera to', cameraFacingMode);
       } catch (e) {
         console.error('Switch camera failed:', e);
@@ -807,15 +1921,9 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleMicBtn.onclick = async () => {
       if (!currentRoom) return;
       try {
-        // đảo trạng thái
         micEnabled = !micEnabled;
-
-        // LiveKit sẽ mute/unmute track mic đang publish
         await currentRoom.localParticipant.setMicrophoneEnabled(micEnabled);
-
-        // cập nhật icon + tooltip
         updateMicUI();
-
       } catch (e) {
         console.error("Toggle mic error:", e);
       }
@@ -827,17 +1935,106 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleSpeakerBtn.onclick = () => {
       if (!currentRoom) return;
 
-      // Đảo trạng thái loa
       speakerEnabled = !speakerEnabled;
-
-      // Áp mute/unmute cho toàn bộ media của call
       applySpeakerMuteToCallMedia();
 
-      // Cập nhật icon + tooltip
-      if (toggleSpeakerIcon) {
-        toggleSpeakerIcon.textContent = speakerEnabled ? 'volume_up' : 'volume_off';
-      }
+      if (toggleSpeakerIcon) toggleSpeakerIcon.textContent = speakerEnabled ? 'volume_up' : 'volume_off';
       toggleSpeakerBtn.title = speakerEnabled ? 'Mute call audio' : 'Unmute call audio';
+    };
+  }
+
+  // Toggle screen share
+  if (toggleScreenBtn) {
+    toggleScreenBtn.onclick = async () => {
+      if (!currentRoom) return;
+
+      // Stop
+      if (screenShareEnabled) {
+        await stopScreenShareInternal();
+        return;
+      }
+
+      // Start
+      try {
+        const startedAt = Date.now();
+        myScreenShareStartedAt = startedAt;
+        startingScreenShare = true;
+
+        // tắt cam local để giảm băng thông
+        cameraPrevEnabledBeforeScreen = cameraEnabled;
+        cameraDisabledByScreenShare = false;
+
+        if (cameraEnabled) {
+          cameraDisabledByScreenShare = true;
+          await disableLocalCamera();
+        }
+
+        // khoá nút camera trong lúc share
+        if (toggleCameraBtn) toggleCameraBtn.disabled = true;
+
+        const tracks = await LivekitClient.createLocalScreenTracks({
+          audio: true,
+          video: true
+        });
+
+        localScreenTracks = tracks;
+
+        for (const t of tracks) {
+          await currentRoom.localParticipant.publishTrack(t);
+
+          if (t.kind === 'video') {
+            const el = t.attach();
+            el.dataset.participant = currentRoom.localParticipant.sid;
+            el.dataset.source = 'screen';
+
+            const name = CHAT_USERNAME || currentRoom.localParticipant.identity || 'You';
+            screenShares.set(currentRoom.localParticipant.sid, { track: t, el, name, publication: null });
+            activeScreenSid = currentRoom.localParticipant.sid;
+
+            // giảm băng thông: chỉ subscribe active screen
+            setOnlyActiveScreenSubscribed();
+
+            renderActiveScreen();
+
+            // Nếu user bấm "Stop sharing" ở UI browser → tự dừng
+            try {
+              if (t.mediaStreamTrack) {
+                t.mediaStreamTrack.onended = () => {
+                  if (screenShareEnabled) stopScreenShareInternal();
+                };
+              }
+            } catch (e) {}
+          }
+          // local screen audio: không attach để tránh tự nghe lại
+        }
+
+        screenShareEnabled = true;
+        startingScreenShare = false;
+        updateScreenUI();
+
+        // claim quyền share (single active sharer)
+        try { await broadcastScreenShareClaim(startedAt); } catch (e) {}
+
+      } catch (e) {
+        console.warn('Start screen share failed:', e);
+
+        startingScreenShare = false;
+        myScreenShareStartedAt = null;
+
+        // mở lại nút camera, restore cam nếu cần
+        screenShareEnabled = false;
+        updateScreenUI();
+
+        try {
+          if (toggleCameraBtn) toggleCameraBtn.disabled = false;
+          if (cameraDisabledByScreenShare && cameraPrevEnabledBeforeScreen) {
+            await enableLocalCamera();
+          }
+        } catch (err) {}
+
+        cameraDisabledByScreenShare = false;
+        cameraPrevEnabledBeforeScreen = null;
+      }
     };
   }
 
@@ -847,7 +2044,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!roomId) { alert("Missing room id"); return; }
 
     try {
-      // YÊU CẦU backend đóng phòng (nếu không phải host, backend trả 403)
       const res = await fetch("https://app.shieldrtc.com/api/rooms/end", {
         method: "POST",
         headers: {
@@ -861,54 +2057,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const err = await res.json().catch(() => ({}));
         console.warn("End room failed:", err);
         alert(err.error || "Only host can end this room (or server error).");
-        // Dù không phải host, vẫn cho phép *rời phòng cá nhân*
       }
     } catch (e) {
       console.error("End room error:", e);
     }
 
-    // Rời phòng local (UI của người khác sẽ được server kick → họ tự nhận 'disconnected')
+    // stop local screen share resources (cleanup nhanh)
+    try { await stopScreenShareInternal(); } catch (e) {}
+
+    // disconnect local
     if (currentRoom) {
-      await currentRoom.disconnect();
+      try { await currentRoom.disconnect(); } catch (e) {}
       currentRoom = null;
     }
-    document.getElementById("videos").innerHTML = "";
-    document.getElementById("endBtn").disabled = true;
-    resetChatBox();
-    const sendBtn = document.getElementById("sendChatBtn");
-    if (sendBtn) sendBtn.disabled = true;
 
-    if (toggleCameraBtn) {
-      toggleCameraBtn.disabled = true;
-    }
-    cameraEnabled = true;
-    if (toggleCameraIcon) {
-      toggleCameraIcon.textContent = 'videocam';
-    }
-
-    if (toggleMicBtn) {
-      toggleMicBtn.disabled = true;
-    }
-    micEnabled = true;
-    updateMicUI();
-
-    if (switchCameraBtn) {
-      switchCameraBtn.disabled = true;
-    }
-    videoDevices = [];
-    currentVideoDeviceIndex = 0;
-
-    // NEW: reset loa
-    if (toggleSpeakerBtn) {
-      toggleSpeakerBtn.disabled = true;
-    }
-    speakerEnabled = true;
-    if (toggleSpeakerIcon) {
-      toggleSpeakerIcon.textContent = 'volume_up';
-    }
-    applySpeakerMuteToCallMedia();
+    resetCallUI();
   };
 });
 </script>
+
 </body>
 </html>
