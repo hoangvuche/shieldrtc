@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <title>ShieldRTC Private Conference</title>
-  <link rel="shortcut icon" type=“image/x-icon” href="images/favicon.ico">
+  <link rel="shortcut icon" type=“image/x-icon” href="images/favicon.png">
   <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
   <style>
 :root{
@@ -376,6 +376,10 @@ button:disabled{ opacity: 0.55; cursor: not-allowed; }
   border-color: rgba(239,68,68,0.95);
 }
 
+#copyRoomJoin {
+  height: 37px;
+}
+
 .controlDock{
   display: flex;
   gap: 10px;
@@ -451,6 +455,7 @@ button:disabled{ opacity: 0.55; cursor: not-allowed; }
 }
 
 .inlineCode{
+  display: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   padding: 2px 6px;
@@ -3160,7 +3165,10 @@ bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
       const data = await res.json();
 
       if (data.room_id) {
-        document.getElementById("createdRoomId").innerText = data.room_id;
+        const createRoomId = document.getElementById("createdRoomId");
+
+        createRoomId.style.display = 'block';
+        createRoomId.innerText = data.room_id;
         document.getElementById("roomId").value = data.room_id;
       } else {
         alert("Create room failed: " + JSON.stringify(data));
