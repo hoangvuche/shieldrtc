@@ -537,23 +537,34 @@ button:disabled{ opacity: 0.55; cursor: not-allowed; }
 .is-chat-docked .sendBar{ margin-top: 10px; }
 .is-chat-docked .cardHead{ margin-bottom: 10px; }
 
+/* Fullscreen: hide topbar completely */
+body.is-stage-fullscreen .topbar{
+  display: none;
+}
+
+/* Fullscreen: make sure the "topbar height" variable becomes 0 */
+body.is-stage-fullscreen{
+  --topbarH: 0px;
+}
+
 body.is-stage-fullscreen .layout{
   grid-template-columns: 1fr;
   max-width: none;
   margin: 0;
-  padding: 12px;
+  padding: 0;
 
-  /* Make stage fill viewport under the sticky topbar */
-  height: calc(100dvh - var(--topbarH, 0px));
-  min-height: calc(100dvh - var(--topbarH, 0px));
+  /* Make stage fill viewport (topbar is hidden in fullscreen) */
+  height: 100dvh;
+  min-height: 100dvh;
 }
 body.is-stage-fullscreen .side{ display: none; }
 body.is-stage-fullscreen #chatNormalMount{ display: none; }
 body.is-stage-fullscreen .main{ height: 100%; min-height: 0; }
 body.is-stage-fullscreen .stageCard{ flex: 1 1 auto; min-height: 0; }
 body.is-stage-fullscreen .stageWrap{ flex: 1 1 auto; min-height: 0; }
-body.is-stage-fullscreen .stage{ height: 100%; min-height: 0; }
+body.is-stage-fullscreen .stage{ height: 100%; min-height: 0; border-radius: 0; }
 body.is-stage-fullscreen .chat-pane{ overflow: hidden; }
+body.is-stage-fullscreen .stageHead{ display: none; }
 
 
 .tiles{
@@ -1762,8 +1773,15 @@ let uiStageFullscreen = false;
 let uiChatOpen = false;
 
 function syncTopbarHeightVar(){
+  // If fullscreen hides topbar, force height = 0 to avoid stale values
+  if (document.body.classList.contains('is-stage-fullscreen')) {
+    document.documentElement.style.setProperty('--topbarH', `0px`);
+    return;
+  }
+
   const el = document.querySelector('.topbar');
   if (!el) return;
+
   const h = Math.ceil(el.getBoundingClientRect().height || 0);
   document.documentElement.style.setProperty('--topbarH', `${h}px`);
 }
