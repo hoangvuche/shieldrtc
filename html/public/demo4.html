@@ -1,0 +1,3883 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>ShieldRTC Private Conference</title>
+  <link rel="shortcut icon" type=“image/x-icon” href="images/favicon.ico">
+  <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
+  <style>
+:root{
+  --bg0:#070A12;
+  --bg1:#0B1020;
+  --panel: rgba(255,255,255,0.075);
+  --panel2: rgba(255,255,255,0.045);
+  --border: rgba(255,255,255,0.12);
+  --border2: rgba(255,255,255,0.08);
+
+
+  --usersPaneMin: 190px;
+  --screenPaneMin: 320px;
+  --chatPaneW: 340px;
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.70);
+  --faint: rgba(255,255,255,0.52);
+
+  --accent: rgba(76,201,240,1);
+  --accent2: rgba(167,139,250,1);
+  --danger: rgba(239,68,68,1);
+  --ok: rgba(34,197,94,1);
+
+  --radius: 18px;
+  --radius-sm: 14px;
+  --radius-xs: 12px;
+
+  --shadow: 0 18px 50px rgba(0,0,0,0.55);
+  --shadow-soft: 0 12px 34px rgba(0,0,0,0.40);
+
+  --focus: 0 0 0 4px rgba(76,201,240,0.22);
+}
+
+*{ box-sizing: border-box; }
+html, body{ height: 100%; }
+
+body.app{
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 700px at 18% 0%, rgba(76,201,240,0.16), rgba(0,0,0,0) 55%),
+    radial-gradient(900px 600px at 86% 16%, rgba(167,139,250,0.14), rgba(0,0,0,0) 60%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+  overflow-x: hidden;
+}
+
+.bg-grid{
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.25;
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(600px 420px at 20% 0%, #000 38%, transparent 70%);
+}
+
+.topbar{
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(6,9,16,0.55);
+  backdrop-filter: blur(12px);
+}
+
+.brand{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 240px;
+}
+
+.logo{
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background:
+    radial-gradient(120% 120% at 25% 20%, rgba(76,201,240,0.35), rgba(0,0,0,0) 55%),
+    radial-gradient(100% 100% at 85% 80%, rgba(167,139,250,0.28), rgba(0,0,0,0) 52%),
+    rgba(255,255,255,0.06);
+  box-shadow: 0 10px 26px rgba(0,0,0,0.35);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.logo svg{ width: 22px; height: 22px; display: block; }
+.logo{ flex: 0 0 auto; }
+
+
+.brandText .name{
+  font-weight: 750;
+  letter-spacing: 0.2px;
+  font-size: 15px;
+  line-height: 16px;
+}
+.brandText .sub{
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 14px;
+  margin-top: 3px;
+}
+
+.brandText{ min-width: 0; }
+.brandText .name, .brandText .sub{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.topbarRight{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text);
+  font-size: 12px;
+  min-width: 0;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+}
+
+.chip-muted{ color: var(--muted); }
+.chip .dot{
+  flex: 0 0 auto;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(148,163,184,0.85);
+  box-shadow: 0 0 0 3px rgba(148,163,184,0.10);
+}
+.chip .dot.ok{ background: rgba(34,197,94,0.95); box-shadow: 0 0 0 3px rgba(34,197,94,0.12); }
+.chip .dot.warn{ background: rgba(245,158,11,0.95); box-shadow: 0 0 0 3px rgba(245,158,11,0.12); }
+
+.chip .material-symbols-outlined{ flex: 0 0 auto; }
+.chipText{
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout{
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 14px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.card{
+  background: var(--panel);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(10px);
+}
+
+.card.pad{ padding: 14px; }
+
+.cardHead{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cardHead h3{
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.25px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.82);
+}
+
+.pill{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.22);
+  color: rgba(255,255,255,0.78);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pill .spark{
+  width: 10px; height: 10px; border-radius: 4px;
+  background: linear-gradient(135deg, rgba(76,201,240,0.9), rgba(167,139,250,0.9));
+  box-shadow: 0 0 0 3px rgba(76,201,240,0.14);
+}
+
+.side{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.main{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.section{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fieldGrid{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.fieldRow{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+label.small{
+  font-size: 12px;
+  color: var(--muted);
+}
+
+input[type="text"], input[type="password"]{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.22);
+  color: var(--text);
+  outline: none;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+}
+input[type="text"]::placeholder, input[type="password"]::placeholder{
+  color: rgba(255,255,255,0.40);
+}
+input[type="text"]:focus, input[type="password"]:focus{
+  border-color: rgba(76,201,240,0.38);
+  box-shadow: var(--focus);
+}
+
+button{
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 80ms ease, filter 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+button:hover{ background: rgba(255,255,255,0.09); }
+button:active:not(:disabled){
+  transform: translateY(1px);
+  filter: brightness(0.96);
+}
+button:disabled{ opacity: 0.55; cursor: not-allowed; }
+
+.btn-primary{
+  background: linear-gradient(135deg, rgba(76,201,240,0.25), rgba(167,139,250,0.18)), rgba(255,255,255,0.06);
+  border-color: rgba(76,201,240,0.22);
+}
+.btn-primary:hover{
+  background: linear-gradient(135deg, rgba(76,201,240,0.30), rgba(167,139,250,0.22)), rgba(255,255,255,0.08);
+}
+
+.btn-danger{
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.30);
+  color: rgba(255,255,255,0.94);
+}
+.btn-danger:hover{ background: rgba(239,68,68,0.18); }
+.btn-danger:focus-visible{ box-shadow: 0 0 0 4px rgba(239,68,68,0.20); outline: none; }
+
+.btn-with-icon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.material-symbols-outlined{
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 22px;
+  line-height: 1;
+  display: inline-block;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+.icon-btn{
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-radius: 14px; /* signature: squircle instead of Meet's circle */
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+}
+
+/* Unread indicator dot for chat */
+#openChatBtn.has-unread::after{
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(239,68,68,1);
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.22);
+  z-index: 2;
+}
+.icon-btn:hover{ background: rgba(255,255,255,0.10); }
+.icon-btn:active:not(:disabled){ transform: scale(0.94); }
+
+.icon-btn--subtle{
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.08);
+  opacity: 0.85;
+}
+.icon-btn--subtle:hover{ opacity: 1; background: rgba(255,255,255,0.08); }
+.icon-btn:focus-visible{ outline: none; box-shadow: var(--focus); }
+
+.icon-btn.sensitive-btn{
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.28);
+}
+.icon-btn.sensitive-btn:hover{ background: rgba(239,68,68,0.18); }
+.icon-btn.sensitive-btn.is-muted{
+  background: rgba(239,68,68,0.88);
+  border-color: rgba(239,68,68,0.95);
+}
+
+.controlDock{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: rgba(0,0,0,0.16);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+
+.stageControlDock{
+  /* center primary controls; keep secondary controls at far right */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.stageControlDock .dockLeft{
+  grid-column: 2;
+  justify-content: center;
+}
+.stageControlDock .dockRight{
+  grid-column: 3;
+  justify-content: flex-end;
+  justify-self: end;
+}
+.stageControlDock .dockLeft,
+.stageControlDock .dockRight{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.stageControlDock .dockRight{
+  padding-left: 14px;
+  margin-left: 6px;
+  border-left: 1px solid rgba(255,255,255,0.10);
+}
+
+/* Phone: put secondary (chat/fullscreen) row centered, right below main controls */
+@media (max-width: 640px){
+  .stageControlDock{
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .stageControlDock .dockLeft{
+    width: 100%;
+    justify-content: center;
+  }
+  .stageControlDock .dockRight{
+    width: 100%;
+    justify-content: center; /* was flex-end */
+    border-left: none;
+    padding-left: 0;
+    margin-left: 0;
+    margin-top: 8px;
+  }
+}
+
+.hint{
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.hr{
+  height: 1px;
+  background: rgba(255,255,255,0.10);
+  margin: 12px 0;
+}
+
+.inlineCode{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.85);
+}
+
+/* ---- Stage layout: screen share (left) + participants (right) ---- */
+.stageWrap{
+  padding: 12px;
+  position: relative;
+}
+
+.stage{
+  --screenPaneWidth: 65%;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  /* Prevent infinite height growth (e.g., long chats). */
+  height: clamp(460px, 62vh, 860px);
+  min-height: 340px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: rgba(0,0,0,0.22);
+}
+
+.pane{ overflow: auto; min-width: 0; min-height: 0; }
+
+.screen-pane{
+  /* Keep the dragged basis exact (do not shrink), so the users pane truly gives up space. */
+  flex: 0 0 auto;
+  min-width: var(--screenPaneMin);
+  background: rgba(0,0,0,0.62);
+  position: relative;
+}
+
+.users-pane{
+  /* Basis=0 prevents content from inflating the pane and blocking the resizer. */
+  flex: 1 1 0;
+  min-width: var(--usersPaneMin);
+  background: rgba(255,255,255,0.03);
+}
+
+.chat-pane{
+  flex: 0 0 var(--chatPaneW);
+  min-width: 0;
+  background: rgba(255,255,255,0.03);
+  border-left: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  flex-direction: column;
+  padding: 12px; /* breathing room */
+  overflow: hidden; /* scroll inside chat box instead */
+}
+
+#chatDockMount{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+#chatDockMount > .card{
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.chat-pane .card{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-pane .chatBox{
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.is-chat-docked .hint{ display: none; }
+.is-chat-docked .sendBar{ margin-top: 10px; }
+.is-chat-docked .cardHead{ margin-bottom: 10px; }
+
+body.is-stage-fullscreen .layout{
+  grid-template-columns: 1fr;
+  max-width: none;
+  margin: 0;
+  padding: 12px;
+
+  /* Make stage fill viewport under the sticky topbar */
+  height: calc(100dvh - var(--topbarH, 0px));
+  min-height: calc(100dvh - var(--topbarH, 0px));
+}
+body.is-stage-fullscreen .side{ display: none; }
+body.is-stage-fullscreen #chatNormalMount{ display: none; }
+body.is-stage-fullscreen .main{ height: 100%; min-height: 0; }
+body.is-stage-fullscreen .stageCard{ flex: 1 1 auto; min-height: 0; }
+body.is-stage-fullscreen .stageWrap{ flex: 1 1 auto; min-height: 0; }
+body.is-stage-fullscreen .stage{ height: 100%; min-height: 0; }
+body.is-stage-fullscreen .chat-pane{ overflow: hidden; }
+
+
+.tiles{
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px;
+  align-content: flex-start;
+  justify-content: flex-start;
+}
+
+/* ---- Auto tile sizing (gallery) for small rooms (<=4) when NO screen share ---- */
+.tiles.is-gallery{
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  gap: 10px;
+  padding: 10px;
+  align-content: stretch;
+  justify-content: stretch;
+}
+.tiles.is-gallery.gallery-1{
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+.tiles.is-gallery.gallery-2{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: 1fr;
+}
+.tiles.is-gallery.gallery-4{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, 1fr);
+}
+
+/* In gallery mode, let the tile stretch to fill its grid cell */
+.tiles.is-gallery .tile{
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-width: 0;
+  flex: none;
+  aspect-ratio: auto;
+}
+
+.tile{
+  position: relative;
+  background: radial-gradient(120% 120% at 20% 15%, rgba(76,201,240,0.10), rgba(0,0,0,0) 55%),
+              rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.35);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  width: clamp(160px, 18vw, 240px);
+  max-width: 260px;
+  min-width: 150px;
+  flex: 0 1 auto;
+  aspect-ratio: 16 / 9;
+}
+.tile:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 16px 38px rgba(0,0,0,0.42);
+}
+
+.mirror-video{ transform: scaleX(-1); transform-origin: center center; }
+
+/* Ensure camera video is perfectly centered and fills the whole tile */
+.tile .media{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tile .media > video{
+  width: 100%;
+  height: 100%;
+  object-position: center center;
+}
+
+#stage video{
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: #000;
+}
+
+.tile video{
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.tile.is-portrait video{
+  object-fit: contain;
+}
+
+.tile .placeholder{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: rgba(255,255,255,0.82);
+  font-size: 12px;
+  user-select: none;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.07), rgba(0,0,0,0.0) 65%);
+}
+
+.tile .placeholder .material-symbols-outlined{
+  font-size: 34px;
+  opacity: 0.92;
+}
+
+.name-tag{
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  color: rgba(255,255,255,0.92);
+  background: rgba(0,0,0,0.42);
+  border: 1px solid rgba(255,255,255,0.10);
+  backdrop-filter: blur(8px);
+  user-select: none;
+  pointer-events: none;
+}
+
+.mic-badge{
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 6;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.42);
+  border: 1px solid rgba(255,255,255,0.10);
+  backdrop-filter: blur(8px);
+  color: rgba(255,255,255,0.94);
+  user-select: none;
+}
+.mic-badge .material-symbols-outlined{ font-size: 18px; opacity: 0.95; }
+.mic-badge.is-muted{ background: rgba(239,68,68,0.92); border-color: rgba(239,68,68,0.62); }
+.mic-badge.is-unknown{ background: rgba(0,0,0,0.28); border-color: rgba(255,255,255,0.10); opacity: 0.78; }
+
+.tile, .screen-tile{ transition: box-shadow 120ms ease, transform 120ms ease; }
+.tile.is-speaking, .screen-tile.is-speaking{
+  box-shadow: 0 0 0 3px rgba(76,201,240,0.95), 0 18px 40px rgba(76,201,240,0.16);
+}
+
+.splitter{
+  flex: 0 0 10px;
+  cursor: col-resize;
+  background: rgba(255,255,255,0.04);
+  position: relative;
+  z-index: 20;
+  touch-action: none;
+  border-left: 1px solid rgba(255,255,255,0.06);
+  border-right: 1px solid rgba(255,255,255,0.06);
+}
+.splitter::before{
+  content:"";
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 46px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.35);
+  box-shadow: -6px 0 0 rgba(255,255,255,0.18), 6px 0 0 rgba(255,255,255,0.18);
+}
+
+.screen-slot{
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+}
+
+.screen-placeholder{
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius);
+  border: 1px dashed rgba(255,255,255,0.14);
+  background: radial-gradient(110% 110% at 20% 15%, rgba(76,201,240,0.10), rgba(0,0,0,0) 55%), rgba(0,0,0,0.40);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(255,255,255,0.82);
+  text-align: center;
+  user-select: none;
+}
+.screen-placeholder .material-symbols-outlined{ font-size: 36px; opacity: 0.9; }
+.screen-placeholder .t{ font-weight: 700; }
+.screen-placeholder .s{ font-size: 12px; color: rgba(255,255,255,0.62); max-width: 360px; }
+
+.screen-tile{
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.70);
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.screen-tile video{ object-fit: contain; }
+
+.screen-tile.is-pannable{ cursor: grab; }
+.screen-tile.is-pannable.is-grabbing{ cursor: grabbing; }
+.screen-tile .media{
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+.screen-tile .media > video{
+  touch-action: none;
+  will-change: transform;
+}
+
+.screen-zoom-controls{
+  position: absolute;
+  right: 16px;
+  bottom: 16px; /* keep space from pane border */
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+}
+.screen-zoom-controls .zoom-btn{
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.38);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+}
+.screen-zoom-controls .zoom-btn:hover{ background: rgba(0,0,0,0.55); }
+.screen-zoom-controls .zoom-btn:disabled{ opacity: 0.45; cursor: default; }
+.screen-zoom-controls .zoom-btn .material-symbols-outlined{ font-size: 20px; }
+
+.is-hidden{ display: none !important; }
+
+.stageHead{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px 0 14px;
+}
+.stageHead .title{
+  font-weight: 750;
+  letter-spacing: 0.2px;
+}
+.stageHead .meta{
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---- Stage controls dock (bottom of stage panel) ---- */
+.stageCard{
+  display: flex;
+  flex-direction: column;
+}
+
+.stageWrap{
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.stageControlsWrap{
+  padding: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.14);
+}
+
+.stageControlsWrap .controlDock{
+  /* handled by grid layout in .stageControlDock */
+}
+
+/* Side controls panel is now moved into the stage */
+#sideControlsCard{ display: none; }
+
+/* ---- Chat ---- */
+.chatWrap{ padding: 12px; }
+
+/* Chat is docked to the right of the participants list (toggle with Open chat). */
+#chatNormalMount{ display: none !important; }
+
+#chatCard{
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#chatCard .chatBox{
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.chatBox{
+  width: 100%;
+  /* Normal mode: keep it usable but not too tall */
+  height: clamp(220px, 34vh, 520px);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: var(--radius);
+  padding: 12px;
+  overflow-y: auto;
+  background: rgba(0,0,0,0.22);
+}
+
+.msg{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+  max-width: min(84%, 560px);
+}
+.msg.me{ margin-left: auto; align-items: flex-end; }
+.msg.them{ margin-right: auto; }
+
+.msg-meta{
+  font-size: 11px;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.2px;
+}
+.msg-bubble{
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.92);
+  line-height: 1.35;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.22);
+}
+.msg.me .msg-bubble{
+  background: linear-gradient(135deg, rgba(76,201,240,0.22), rgba(167,139,250,0.16)), rgba(255,255,255,0.06);
+  border-color: rgba(76,201,240,0.20);
+}
+
+.sendBar{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+#chatInput{ flex: 1 1 auto; }
+
+@media screen and (max-width: 980px){
+  .layout{ grid-template-columns: 1fr; }
+  .topbar{ padding: 12px 14px; }
+}
+
+@media screen and (max-width: 640px){
+  /* Topbar: prevent logo/dot from being squeezed on narrow screens */
+  .brand{ min-width: 0; }
+  .brandText{ min-width: 0; max-width: 46vw; }
+  .brandText .sub{ display: none; }
+  .topbarRight{ max-width: 54vw; }
+  #topbarRoom{ max-width: 54vw; }
+  .chipText{ max-width: 46vw; }
+  .fieldRow{ grid-template-columns: 1fr; }
+  .stage{ flex-direction: column; min-height: 420px; }
+  .screen-pane{
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    height: 52vh;
+  }
+  .users-pane{ min-width: 0; display:flex; }
+  .tiles{ flex: 1 1 auto; min-height: 0; }
+  .splitter{ cursor: row-resize; width: 100%; }
+  .splitter::before{
+    width: 46px;
+    height: 3px;
+    box-shadow: 0 -6px 0 rgba(255,255,255,0.18), 0 6px 0 rgba(255,255,255,0.18);
+  }
+
+  /* ---- Mobile participant tiles layout ----
+     - 1 user: full container
+     - 2 users: split half (top/bottom)
+     - 3+ users: vertical list (scroll)
+  */
+  .tiles.mobile-1,
+  .tiles.mobile-2,
+  .tiles.mobile-3plus{
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-content: stretch;
+    justify-content: flex-start;
+    height: 100%;
+  }
+
+  /* Disable desktop gallery grid rules on mobile */
+  .tiles.is-gallery{ display: flex; }
+
+  .tiles.mobile-1 .tile{
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 auto;
+    height: auto;
+    aspect-ratio: auto;
+  }
+  .tiles.mobile-2 .tile{
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 0;
+    height: auto;
+    aspect-ratio: auto;
+  }
+  .tiles.mobile-3plus .tile{
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 0 0 auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .sendBar{ flex-direction: column; align-items: stretch; }
+}
+</style>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=block" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body class="app">
+<div class="bg-grid" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 2.5l7.5 3.6v6.4c0 5.4-3.2 9.2-7.5 10.9C7.7 21.7 4.5 17.9 4.5 12.5V6.1L12 2.5z"
+                stroke="rgba(255,255,255,0.92)" stroke-width="1.4" />
+          <path d="M8.2 12.2l2.3 2.5 5.3-5.7"
+                stroke="rgba(76,201,240,0.95)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="brandText">
+        <div class="name">ShieldRTC</div>
+        <div class="sub">Private conference · Ephemeral · Zero retention</div>
+      </div>
+    </div>
+
+    <div class="topbarRight">
+      <div id="topbarRoom" class="chip">
+        <span class="dot"></span>
+        <span class="chipText">Not connected</span>
+      </div>
+      <div class="chip chip-muted">
+        <span class="material-symbols-outlined" style="font-size:18px;">group</span>
+        <span id="topbarCount">0</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="side">
+
+      <section class="card pad">
+        <div class="cardHead">
+          <h3>Access</h3>
+          <div class="pill"><span class="spark"></span>No storage by design</div>
+        </div>
+
+        <div class="fieldGrid">
+          <div class="fieldRow">
+            <input type="text" id="username" placeholder="Username">
+            <input type="password" id="password" placeholder="Password">
+          </div>
+
+          <button id="loginBtn" class="btn-primary">Login</button>
+        </div>
+
+        <div class="hint">
+          Login is only used to mint a short-lived token. Messages and media are never stored on ShieldRTC servers.
+        </div>
+      </section>
+
+      <section class="card pad">
+        <div class="cardHead">
+          <h3>Room</h3>
+          <div class="pill">
+            <span class="material-symbols-outlined" style="font-size:18px;">lock</span>
+            Ephemeral
+          </div>
+        </div>
+
+        <div class="fieldGrid">
+          <button id="createRoomBtn" class="btn-primary" disabled>Create room</button>
+
+          <div id="createdRoom" class="section">
+            <span style="color:var(--muted); font-size:12px;">Created</span>
+            <span id="createdRoomId" class="inlineCode"></span>
+            <button id="copyRoom" class="icon-btn" title="Copy room ID">
+              <span class="material-symbols-outlined">content_copy</span>
+            </button>
+          </div>
+
+          <div class="hr"></div>
+
+          <div id="joinSection" class="section">
+            <input type="text" id="roomId" placeholder="Enter room ID">
+            <button id="joinBtn" class="btn-primary" disabled>Join</button>
+            <button id="endBtn" class="btn-danger" disabled>End</button>
+            <button id="copyRoomJoin" class="icon-btn icon-btn--subtle" title="Copy room ID">
+              <span class="material-symbols-outlined">content_copy</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="hint">
+          Share your <span class="inlineCode">Room ID</span> with others. Screen share is single-owner to keep the stage clean.
+        </div>
+      </section>
+
+      <section class="card pad" id="sideControlsCard">
+        <div class="cardHead">
+          <h3>Controls</h3>
+          <div class="pill">
+            <span class="material-symbols-outlined" style="font-size:18px;">bolt</span>
+            Low bandwidth
+          </div>
+        </div>
+
+        <div id="mediaWrapper" class="controlDock stageControlDock">
+          <div class="dockLeft">
+
+            <button id="toggleCameraBtn" class="icon-btn" disabled title="Turn camera off">
+              <span class="material-symbols-outlined">videocam</span>
+            </button>
+
+            <button id="switchCameraBtn" class="icon-btn" disabled title="Switch camera">
+              <span class="material-symbols-outlined">switch_camera</span>
+            </button>
+
+            <button id="toggleScreenBtn" class="icon-btn" disabled title="Share screen">
+              <span class="material-symbols-outlined">screen_share</span>
+            </button>
+
+            <button id="toggleSpeakerBtn" class="icon-btn" disabled title="Mute call audio">
+              <span class="material-symbols-outlined">volume_up</span>
+            </button>
+
+            <button id="toggleMicBtn" class="icon-btn sensitive-btn" disabled title="Mute microphone">
+              <span class="material-symbols-outlined">mic</span>
+            </button>
+
+          </div>
+
+          <div class="dockRight">
+            <button id="openChatBtn" class="icon-btn icon-btn--subtle" title="Open chat">
+              <span class="material-symbols-outlined">chat</span>
+            </button>
+            <button id="stageFsBtn" class="icon-btn icon-btn--subtle" title="Enter fullscreen">
+              <span class="material-symbols-outlined">fullscreen</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="hint">
+          When you share your screen, your camera pauses automatically to save bandwidth.
+        </div>
+      </section>
+
+    </aside>
+
+    <section class="main">
+
+      <section class="card stageCard">
+        <div class="stageHead">
+          <div class="title">Stage</div>
+          <div class="meta">
+            <span>Active speaker gets a highlight border.</span>
+          </div>
+        </div>
+
+        <div class="stageWrap">
+          <div id="stage" class="stage">
+            <div id="screenPane" class="pane screen-pane">
+              <div id="screenSlot" class="screen-slot"></div>
+
+              <!-- Context controls (only zoom shows when a screen share is active) -->
+              <div id="stageQuickControls" class="screen-zoom-controls" aria-label="Stage controls">
+                <button id="zoomOutBtn" class="zoom-btn is-hidden" title="Zoom out">
+                  <span class="material-symbols-outlined">zoom_out</span>
+                </button>
+                <button id="zoomInBtn" class="zoom-btn is-hidden" title="Zoom in">
+                  <span class="material-symbols-outlined">zoom_in</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="splitter" class="splitter" title="Drag to resize"></div>
+            <div id="usersPane" class="pane users-pane">
+              <div id="videos" class="tiles"></div>
+            </div>
+            <div id="chatPane" class="pane chat-pane is-hidden">
+              <div id="chatDockMount"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stageControlsWrap">
+          <div id="stageControlsMount"></div>
+          <div class="hint stageControlsHint">
+            When you share your screen, your camera pauses automatically to save bandwidth.
+          </div>
+        </div>
+      </section>
+
+      <div id="chatNormalMount">
+      <section id="chatCard" class="card pad">
+        <div class="cardHead">
+          <h3>Ephemeral chat</h3>
+          <div class="pill"><span class="spark"></span>Not stored</div>
+        </div>
+
+        <div id="chatBox" class="chatBox"></div>
+
+        <div id="sendWrapper" class="sendBar">
+          <input type="text" id="chatInput" placeholder="Type a message">
+          <button id="sendChatBtn" class="btn-with-icon btn-primary" disabled>
+            <span class="material-symbols-outlined">send</span>
+            Send
+          </button>
+        </div>
+      </section>
+      </div>
+
+    </section>
+  </main>
+
+<script>
+const LOGIN_URL = "https://app.shieldrtc.com/api/login";
+const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
+const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
+
+let SIGNAL_JWT = null;
+let currentRoom = null;       // giữ instance room để disconnect
+
+// trạng thái UI
+let cameraEnabled = true;
+let micEnabled = true;
+let speakerEnabled = true;
+let cameraFacingMode = 'user'; // 'user' = cam trước, 'environment' = cam sau
+
+// local tracks
+let localVideoTrack = null;
+let localVideoElement = null;
+let localHasAudio = false;
+
+// screen share local
+let screenShareEnabled = false;
+let localScreenTracks = []; // video + optional audio
+
+// screen share arbitration (single active sharer)
+let myScreenShareStartedAt = null; // ms epoch when local started sharing (or attempting)
+let startingScreenShare = false;   // true while starting screen share
+
+// camera restore state khi screen share
+let cameraPrevEnabledBeforeScreen = null;
+let cameraDisabledByScreenShare = false;
+
+// Chat related
+let CHAT_USERNAME = null;
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+// Chat unread indicator state (red dot on the Open chat button)
+let __chatHasUnread = false;
+
+function setChatUnread(on){
+  __chatHasUnread = !!on;
+  const btn = document.getElementById('openChatBtn');
+  if (btn) btn.classList.toggle('has-unread', __chatHasUnread);
+}
+
+function isChatPaneVisible(){
+  const pane = document.getElementById('chatPane');
+  if (!pane) return false;
+  if (pane.classList.contains('is-hidden')) return false;
+  try {
+    return getComputedStyle(pane).display !== 'none';
+  } catch (e) {
+    return true;
+  }
+}
+
+function clearChatUnreadIfAtBottom(){
+  const box = document.getElementById('chatBox');
+  if (!box) return;
+  const stickThreshold = 60;
+  const distanceFromBottom = (box.scrollHeight - box.scrollTop - box.clientHeight);
+  if (distanceFromBottom < stickThreshold) setChatUnread(false);
+}
+
+/** Simple escape để tránh chèn HTML trực tiếp */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function appendChatMessage(sender, message, isLocal) {
+  const box = document.getElementById('chatBox');
+  if (!box) return;
+
+  // Only auto-scroll if the user is already near the bottom (so they can read older messages).
+  // If chat is closed, never auto-scroll on incoming messages.
+  const stickThreshold = 60;
+  const chatVisible = isChatPaneVisible();
+  const distanceFromBottom = (box.scrollHeight - box.scrollTop - box.clientHeight);
+  const shouldStick = chatVisible && (distanceFromBottom < stickThreshold);
+
+  const line = document.createElement('div');
+  line.className = `msg ${isLocal ? 'me' : 'them'}`;
+
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+  meta.textContent = isLocal ? 'You' : (sender || 'Peer');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = String(message ?? '');
+
+  line.appendChild(meta);
+  line.appendChild(bubble);
+
+  box.appendChild(line);
+
+  // Auto-scroll only when the user is already at the bottom AND chat is visible.
+  // Always scroll for local messages (sending) so the UX feels immediate.
+  if (shouldStick || isLocal) {
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // Unread indicator rules:
+  // - If chat is closed: show dot on any incoming (remote) message.
+  // - If chat is open but user is not near the bottom: show dot (new msg is below).
+  if (!isLocal) {
+    const notVisibleNow = (!chatVisible) || !shouldStick;
+    if (notVisibleNow) setChatUnread(true);
+  }
+}
+
+function resetChatBox() {
+  const box = document.getElementById('chatBox');
+  if (box) box.innerHTML = '';
+  setChatUnread(false);
+}
+
+// --- Data channel helpers (chat + control messages)
+function safeParseJson(text) {
+  try { return JSON.parse(text); } catch (e) { return null; }
+}
+
+async function publishDataObject(obj) {
+  if (!currentRoom || !currentRoom.localParticipant) return;
+  try {
+    const encoded = textEncoder.encode(JSON.stringify(obj));
+    await currentRoom.localParticipant.publishData(encoded, { reliable: true });
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function broadcastScreenShareClaim(startedAt) {
+  if (!currentRoom) return;
+  await publishDataObject({
+    type: 'screen_share_claim',
+    ts: Number(startedAt || Date.now()),
+    sid: currentRoom.localParticipant.sid,
+    sender: CHAT_USERNAME || currentRoom.localParticipant.identity || 'User'
+  });
+}
+
+async function broadcastScreenShareRelease() {
+  if (!currentRoom) return;
+  await publishDataObject({
+    type: 'screen_share_release',
+    ts: Date.now(),
+    sid: currentRoom.localParticipant.sid,
+    sender: CHAT_USERNAME || currentRoom.localParticipant.identity || 'User'
+  });
+}
+
+
+// --- Mic state broadcast (to make mute UI reliable across mobile/desktop) ---
+// Rationale: relying on track/publication mute flags can be flaky on some mobile browsers.
+// Each peer broadcasts its micEnabled state and also replies to snapshot requests.
+function getLocalIdentityKeyForBroadcast() {
+  try {
+    if (currentRoom && currentRoom.localParticipant) {
+      const p = currentRoom.localParticipant;
+      // Use stable unique id; DO NOT use display name / CHAT_USERNAME (can collide)
+      const key = String((p.identity || p.sid || '')).trim();
+      return key || String(p.sid || 'local');
+    }
+  } catch (e) {}
+  return 'local';
+}
+
+function getLocalMicEnabledForBroadcast() {
+  try {
+    // Treat "no local audio track" as mic disabled (muted)
+    return !!(micEnabled && localHasAudio);
+  } catch (e) {
+    return false;
+  }
+}
+
+async function broadcastMicStateNow(extra) {
+  if (!currentRoom || !currentRoom.localParticipant) return;
+  const obj = Object.assign({
+    type: 'mic_state',
+    key: getLocalIdentityKeyForBroadcast(),
+    enabled: getLocalMicEnabledForBroadcast(),
+    sid: currentRoom.localParticipant.sid,
+    ts: Date.now(),
+  }, (extra && typeof extra === 'object') ? extra : {});
+  await publishDataObject(obj);
+}
+
+async function requestMicStatesNow(extra) {
+  if (!currentRoom || !currentRoom.localParticipant) return;
+  const obj = Object.assign({
+    type: 'mic_state_req',
+    from_sid: currentRoom.localParticipant.sid,
+    from_key: getLocalIdentityKeyForBroadcast(),
+    ts: Date.now(),
+  }, (extra && typeof extra === 'object') ? extra : {});
+  await publishDataObject(obj);
+}
+
+
+
+// --- Peer broadcast helpers (mic mute state sync for new joiners) ---
+async function broadcastPeerHelloNow(extra) {
+  if (!currentRoom || !currentRoom.localParticipant) return;
+  const obj = Object.assign({
+    type: 'peer_hello',
+    key: getLocalIdentityKeyForBroadcast(),
+    sid: currentRoom.localParticipant.sid,
+    ts: Date.now(),
+  }, (extra && typeof extra === 'object') ? extra : {});
+  await publishDataObject(obj);
+}
+
+function scheduleMicStateBurst(reason){
+  // Broadcast our current mic state a few times to cover datachannel warmup for new joiners.
+  const delays = [0, 240, 850, 1900, 3600];
+  delays.forEach((d, idx) => {
+    setTimeout(() => {
+      try { broadcastMicStateNow({ cause: reason || 'burst', n: idx + 1 }); } catch (e) {}
+    }, d);
+  });
+}
+
+function schedulePeerHelloBurst(){
+  const delays = [120, 520, 1400];
+  delays.forEach((d, idx) => {
+    setTimeout(() => {
+      try { broadcastPeerHelloNow({ n: idx + 1 }); } catch (e) {}
+    }, d);
+  });
+}
+
+
+function scheduleMicRequestBurst(){
+  // New joiner asks everyone for current mic state.
+  // Burst helps cover datachannel warmup + mobile timing quirks.
+  const delays = [60, 260, 820, 1650, 3200];
+  delays.forEach((d, idx) => {
+    setTimeout(() => {
+      try { requestMicStatesNow({ n: idx + 1 }); } catch (e) {}
+    }, d);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // --- UI refs
+  const toggleCameraBtn  = document.getElementById("toggleCameraBtn");
+  const toggleCameraIcon = toggleCameraBtn ? toggleCameraBtn.querySelector('.material-symbols-outlined') : null;
+
+  const toggleMicBtn  = document.getElementById("toggleMicBtn");
+  const toggleMicIcon = toggleMicBtn ? toggleMicBtn.querySelector('.material-symbols-outlined') : null;
+
+  const toggleSpeakerBtn  = document.getElementById("toggleSpeakerBtn");
+  const toggleSpeakerIcon = toggleSpeakerBtn ? toggleSpeakerBtn.querySelector('.material-symbols-outlined') : null;
+
+  const switchCameraBtn  = document.getElementById("switchCameraBtn");
+  const toggleScreenBtn  = document.getElementById("toggleScreenBtn");
+  const toggleScreenIcon = toggleScreenBtn ? toggleScreenBtn.querySelector('.material-symbols-outlined') : null;
+
+  // Stage layout refs
+  const stageEl      = document.getElementById('stage');
+  const screenPaneEl = document.getElementById('screenPane');
+  const usersPaneEl  = document.getElementById('usersPane');
+  const splitterEl   = document.getElementById('splitter');
+  const screenSlotEl = document.getElementById('screenSlot');
+  const videosEl     = document.getElementById('videos');
+
+  // Move control dock to the bottom of the stage panel (screen share + user cams)
+  const stageControlsMount = document.getElementById('stageControlsMount');
+  const mediaWrapperEl = document.getElementById('mediaWrapper');
+  if (stageControlsMount && mediaWrapperEl) {
+    stageControlsMount.appendChild(mediaWrapperEl);
+  }
+
+
+  // Topbar status (connection + people count)
+  const topbarRoomEl   = document.getElementById('topbarRoom');
+  const topbarRoomDot  = topbarRoomEl ? topbarRoomEl.querySelector('.dot') : null;
+  const topbarRoomText = topbarRoomEl ? topbarRoomEl.querySelector('.chipText') : null;
+  const topbarCountEl  = document.getElementById('topbarCount');
+
+  function setTopbarStatus(connected, roomId) {
+    if (topbarRoomDot) topbarRoomDot.classList.toggle('ok', !!connected);
+    if (topbarRoomText) topbarRoomText.textContent = connected ? (`Room: ${roomId || ''}`) : 'Not connected';
+  }
+
+    function getRenderedTileCount() {
+    try {
+      if (!videosEl) return 0;
+      return videosEl.querySelectorAll('.tile').length;
+    } catch (e) { return 0; }
+  }
+
+  function getRemoteParticipantsCount(room) {
+    if (!room) return 0;
+    const m =
+      room.participants ||
+      room.remoteParticipants ||
+      room.remoteParticipantsMap ||
+      room._participants ||
+      room._remoteParticipants ||
+      null;
+
+    try {
+      if (m && typeof m.size === 'number') return m.size;
+      if (Array.isArray(m)) return m.length;
+      if (m && typeof m === 'object') return Object.keys(m).length;
+    } catch (e) {}
+    return 0;
+  }
+  // Collect a robust set of live participant SIDs from whatever map the SDK exposes.
+  // This prevents tile-prune from accidentally removing remote tiles on some LiveKit versions.
+  function collectLiveParticipantSids(room) {
+    const live = new Set();
+    if (!room) return live;
+
+    try { if (room.localParticipant && room.localParticipant.sid) live.add(String(room.localParticipant.sid)); } catch (e) {}
+
+    const candidates = [
+      room.participants,
+      room.remoteParticipants,
+      room.remoteParticipantsMap,
+      room._participants,
+      room._remoteParticipants
+    ];
+
+    for (const m of candidates) {
+      if (!m) continue;
+      try {
+        // Map-like
+        if (typeof m.size === 'number' && typeof m.forEach === 'function') {
+          m.forEach((p, k) => {
+            try { if (k != null) live.add(String(k)); } catch (e) {}
+            try { if (p && p.sid != null) live.add(String(p.sid)); } catch (e) {}
+          });
+          continue;
+        }
+
+        // Array-like
+        if (Array.isArray(m)) {
+          m.forEach((p) => { try { if (p && p.sid != null) live.add(String(p.sid)); } catch (e) {} });
+          continue;
+        }
+
+        // Plain object map
+        if (typeof m === 'object') {
+          try { Object.keys(m).forEach((k) => { if (k != null) live.add(String(k)); }); } catch (e) {}
+          try { Object.values(m).forEach((p) => { if (p && p.sid != null) live.add(String(p.sid)); }); } catch (e) {}
+        }
+      } catch (e) {}
+    }
+
+    return live;
+  }
+
+  // Enumerate remote participants in a version-tolerant way (used to create placeholder tiles for "camera off" users).
+  function getRemoteParticipantsList(room) {
+    const list = [];
+    if (!room) return list;
+
+    const m =
+      room.participants ||
+      room.remoteParticipants ||
+      room.remoteParticipantsMap ||
+      room._participants ||
+      room._remoteParticipants ||
+      null;
+
+    try {
+      if (m && typeof m.forEach === 'function') {
+        m.forEach((p) => { if (p && p.sid) list.push(p); });
+        return list;
+      }
+      if (Array.isArray(m)) {
+        m.forEach((p) => { if (p && p.sid) list.push(p); });
+        return list;
+      }
+      if (m && typeof m === 'object') {
+        Object.values(m).forEach((p) => { if (p && p.sid) list.push(p); });
+      }
+    } catch (e) {}
+
+    return list;
+  }
+
+
+  function updateTopbarCount() {
+    if (!topbarCountEl) return;
+    if (!currentRoom) { topbarCountEl.textContent = '0'; return; }
+
+    // Prefer what we actually render (works even if SDK participant maps differ across versions).
+    const rendered = getRenderedTileCount();
+    const remote = getRemoteParticipantsCount(currentRoom);
+    const count = rendered > 0 ? rendered : (1 + remote);
+
+    topbarCountEl.textContent = String(count);
+  }
+
+  // initial
+  setTopbarStatus(false, '');
+  updateTopbarCount();
+
+
+  // Participant UI state
+  const participantTiles = new Map();   // sid -> tileEl
+  const participantNames = new Map();   // sid -> string
+  const identityToActiveSid = new Map(); // identityKey -> sid (keep newest connection)
+  const sidToIdentityKey    = new Map(); // sid -> identityKey
+  const shadowedSids        = new Set(); // old sids hidden when same user joins from another device
+  const screenShares     = new Map();   // sid -> { track, el, name, publication? }
+  const participantSeenAt = new Map(); // sid -> ms first seen (for mic sync grace)
+  const MIC_GRACE_MS = 1400;
+  const REMOTE_NO_PUB_GRACE_MS = 250;
+  
+  // Robust cleanup: remove orphan tiles even if some disconnect events are missed (network drops, tab kills, etc.)
+  let participantPruneTimer = null;
+  let participantPruneEnabledAt = 0;
+  let participantLastNonEmptyAt = 0;
+  
+  function pruneStaleParticipantTiles() {
+    try {
+      if (!currentRoom) return;
+      const st = String((currentRoom.connectionState || currentRoom.state || currentRoom._connectionState || '')).toLowerCase();
+      // Only prune when we can positively detect "connected". If unknown, skip to avoid flicker.
+      if (!st) return;
+      if (st.includes('reconnect') || st.includes('connecting')) return;
+      if (!st.includes('connected')) return;
+      if (participantPruneEnabledAt && Date.now() < participantPruneEnabledAt) return;
+    } catch (e) { return; }
+
+    // Guard: some SDK versions momentarily show 0 participants during warmup/reconnect.
+    // Avoid pruning remote tiles too aggressively (causes flicker).
+    try {
+      const remoteSize = getRemoteParticipantsCount(currentRoom);
+      if (remoteSize > 0) participantLastNonEmptyAt = Date.now();
+      if (remoteSize === 0 && participantTiles.size > 1) {
+        if (!participantLastNonEmptyAt || (Date.now() - participantLastNonEmptyAt) < 5000) return;
+      }
+    } catch (e) {}
+    const live = collectLiveParticipantSids(currentRoom);
+    // Safety: if SDK reports remote participants but we couldn't enumerate them (temporary warmup), don't prune.
+    try {
+      const remoteSizeNow = getRemoteParticipantsCount(currentRoom);
+      if (remoteSizeNow > 0 && live.size <= 1 && participantTiles.size > 1) return;
+    } catch (e) {}
+    
+    const toRemove = [];
+    try {
+      for (const sid of participantTiles.keys()) {
+        const s = String(sid || '').trim();
+        if (!s) continue;
+        if (!live.has(s)) toRemove.push(s);
+      }
+    } catch (e) {}
+    if (!toRemove.length) return;
+    
+    for (const sid of toRemove) {
+      // identity bookkeeping
+      try {
+        const key = sidToIdentityKey.get(sid);
+        if (key && identityToActiveSid.get(key) === sid) identityToActiveSid.delete(key);
+        sidToIdentityKey.delete(sid);
+        shadowedSids.delete(sid);
+      } catch (e) {}
+      
+      // Remove UI tile + media
+      try { removeParticipantTile(sid); } catch (e) {}
+      try { cleanupParticipantMediaElements(sid); } catch (e) {}
+      
+      // Remove screen share UI for that sid
+      try {
+        const item = screenShares.get(sid);
+        if (item && item.el) { try { item.el.remove(); } catch (e) {} }
+        screenShares.delete(sid);
+        if (activeScreenSid === sid) activeScreenSid = null;
+      } catch (e) {}
+    }
+    
+    try { renderActiveScreen(); } catch (e) {}
+    try { updateTopbarCount(); } catch (e) {}
+  }
+  
+  function startParticipantPruneLoop() {
+    try { stopParticipantPruneLoop(); } catch (e) {}
+    // Prevent early pruning while participant maps are still warming up (avoid UI flicker)
+    try { participantPruneEnabledAt = Date.now() + 3500; } catch (e) { participantPruneEnabledAt = 0; }
+    try { participantLastNonEmptyAt = 0; } catch (e) {}
+    participantPruneTimer = setInterval(() => {
+      try { pruneStaleParticipantTiles(); } catch (e) {}
+    }, 2500);
+  }
+  
+  function stopParticipantPruneLoop() {
+    if (participantPruneTimer) {
+      try { clearInterval(participantPruneTimer); } catch (e) {}
+      participantPruneTimer = null;
+    }
+    try { participantPruneEnabledAt = 0; } catch (e) {}
+  }
+// Mic state broadcast cache (identityKey -> { enabled, ts, sid })
+  const micBroadcastByKey = new Map();
+  const MIC_BROADCAST_TTL_MS = 24 * 60 * 60 * 1000; // keep for up to 24h within a session
+
+  let activeScreenSid = null;
+
+  // Screen tile (left pane)
+  const screenTileEl = document.createElement('div');
+  screenTileEl.className = 'screen-tile';
+  screenTileEl.innerHTML = `
+<div class="name-tag"></div>
+<div class="media"></div>
+`;
+
+// Placeholder shown when no one is sharing the screen
+const screenPlaceholderEl = document.createElement('div');
+screenPlaceholderEl.className = 'screen-placeholder';
+screenPlaceholderEl.innerHTML = `
+  <span class="material-symbols-outlined">screen_share</span>
+  <div class="t">No active screen share</div>
+  <div class="s">When someone shares their screen, it will appear here.</div>
+`;
+
+
+// --- Screen zoom controls (phóng to / thu nhỏ) + drag to move
+const zoomInBtn  = document.getElementById('zoomInBtn');
+const zoomOutBtn = document.getElementById('zoomOutBtn');
+
+
+const fsBtn     = document.getElementById('stageFsBtn');
+const openChatBtn = document.getElementById('openChatBtn');
+const fsBtnIcon  = fsBtn ? fsBtn.querySelector('.material-symbols-outlined') : null;
+const openChatIcon = openChatBtn ? openChatBtn.querySelector('.material-symbols-outlined') : null;
+
+// Fullscreen (layout) + chat dock refs
+const sideEl = document.querySelector('aside.side');
+const chatPaneEl = document.getElementById('chatPane');
+const chatDockMountEl = document.getElementById('chatDockMount');
+const chatNormalMountEl = document.getElementById('chatNormalMount');
+const chatCardEl = document.getElementById('chatCard');
+
+let uiStageFullscreen = false;
+let uiChatOpen = false;
+
+function syncTopbarHeightVar(){
+  const el = document.querySelector('.topbar');
+  if (!el) return;
+  const h = Math.ceil(el.getBoundingClientRect().height || 0);
+  document.documentElement.style.setProperty('--topbarH', `${h}px`);
+}
+syncTopbarHeightVar();
+
+function getPx(v, fallback){
+  const n = Number(String(v||'').replace('px',''));
+  return Number.isFinite(n) && n>0 ? n : fallback;
+}
+
+let __usersOneColMinPx = null;
+function computeUsersOneColMinPx(){
+  // Minimum width for the user cam list to fit exactly ONE tile column (no horizontal overflow).
+  // We measure a probe .tile outside of flex constraints so clamp(160px, 18vw, 240px) resolves correctly.
+  try{
+    const probe = document.createElement('div');
+    probe.className = 'tile';
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    probe.style.pointerEvents = 'none';
+    probe.style.left = '-9999px';
+    probe.style.top = '-9999px';
+    probe.style.height = '100px';
+    document.body.appendChild(probe);
+
+    const csTile = getComputedStyle(probe);
+    const tileMinW = parseFloat(csTile.minWidth || '0') || 0;
+    const tileW0 = probe.getBoundingClientRect().width || 0;
+    // Use the computed width (clamp(...) result) as the real "1 column" width; fall back to min-width.
+    const tileW = Math.max(0, tileW0 || tileMinW);
+    probe.remove();
+
+    // padding left+right from the tiles container (fallback: 20)
+    let padLR = 20;
+    try{
+      if (videosEl){
+        const cs = getComputedStyle(videosEl);
+        const pl = parseFloat(cs.paddingLeft || '0') || 0;
+        const pr = parseFloat(cs.paddingRight || '0') || 0;
+        padLR = pl + pr;
+      }
+    }catch(e){}
+
+    // reserve scrollbar width so a long list doesn't force a horizontal scroll
+    const scrollbarReserve = 16;
+
+    const min = Math.ceil(tileW + padLR + scrollbarReserve + 2);
+    return (Number.isFinite(min) && min > 0) ? min : 190;
+  }catch(e){
+    return 190;
+  }
+}
+
+function getUsersMinPx(){
+  let cssMin = 190;
+  try{
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--usersPaneMin');
+    cssMin = getPx(v, 190);
+  }catch(e){}
+  if (__usersOneColMinPx == null) __usersOneColMinPx = computeUsersOneColMinPx();
+  return Math.max(cssMin, __usersOneColMinPx);
+}
+function getScreenMinPx(){
+  try{
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--screenPaneMin');
+    return getPx(v, 320);
+  }catch(e){ return 320; }
+}
+function getChatWidthPx(){
+  try{
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--chatPaneW');
+    return getPx(v, 340);
+  }catch(e){ return 340; }
+}
+
+function dockChatIntoStage(){
+  if (!chatCardEl || !chatDockMountEl) return;
+  if (chatDockMountEl.contains(chatCardEl)) return;
+  chatDockMountEl.appendChild(chatCardEl);
+  chatCardEl.classList.add('is-chat-docked');
+}
+
+function undockChatToNormal(){
+  if (!chatCardEl || !chatNormalMountEl) return;
+  if (chatNormalMountEl.contains(chatCardEl)) return;
+  chatNormalMountEl.appendChild(chatCardEl);
+  chatCardEl.classList.remove('is-chat-docked');
+}
+
+function closeDockedChat(){
+  uiChatOpen = false;
+  if (chatPaneEl) chatPaneEl.classList.add('is-hidden');
+  if (openChatIcon) openChatIcon.textContent = 'chat';
+  if (openChatBtn) openChatBtn.title = 'Open chat';
+}
+
+function openDockedChat(){
+  uiChatOpen = true;
+  if (chatPaneEl) chatPaneEl.classList.remove('is-hidden');
+  if (openChatIcon) openChatIcon.textContent = 'close';
+  if (openChatBtn) openChatBtn.title = 'Close chat';
+  // If user is already at the bottom, remove the unread dot (they can see latest messages).
+  try{ requestAnimationFrame(() => clearChatUnreadIfAtBottom()); }catch(e){}
+  try{ document.getElementById('chatInput')?.focus(); }catch(e){}
+}
+
+function toggleDockedChat(){
+  if (uiChatOpen) closeDockedChat();
+  else openDockedChat();
+  // re-clamp splitter when chat pane width changes
+  try{ window.dispatchEvent(new Event('resize')); }catch(e){}
+}
+
+function syncFsUi(){
+  document.body.classList.toggle('is-stage-fullscreen', uiStageFullscreen);
+  document.body.classList.toggle('is-chat-open', uiChatOpen);
+  syncTopbarHeightVar();
+
+  if (fsBtnIcon) fsBtnIcon.textContent = uiStageFullscreen ? 'fullscreen_exit' : 'fullscreen';
+  if (fsBtn) fsBtn.title = uiStageFullscreen ? 'Exit fullscreen' : 'Enter fullscreen';
+  if (openChatBtn) openChatBtn.title = uiChatOpen ? 'Close chat' : 'Open chat';
+}
+
+function enterStageFullscreen(){
+  uiStageFullscreen = true;
+  syncFsUi();
+
+  // In fullscreen, default to maximize the screen-share pane
+  // (keep participants list at minimum = 1 column).
+  try{
+    requestAnimationFrame(() => {
+      try{
+        if (screenPaneEl && !screenPaneEl.classList.contains('is-hidden')) {
+          const rect = stageEl.getBoundingClientRect();
+          const minScreen = getScreenMinPx();
+          const minUsers  = getUsersMinPx();
+          const splitW = splitterEl ? (splitterEl.getBoundingClientRect().width || 8) : 8;
+          const chatW  = (chatPaneEl && !chatPaneEl.classList.contains('is-hidden')) ? getChatWidthPx() : 0;
+          const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
+          const w = Math.max(minScreen, Math.min(max, max));
+          screenPaneEl.style.flexBasis = `${w}px`;
+          try { localStorage.setItem('screenPaneBasisPx', String(w)); } catch (e) {}
+        }
+      }catch(e){}
+      try{ window.dispatchEvent(new Event('resize')); }catch(e){}
+    });
+  }catch(e){
+    try{ window.dispatchEvent(new Event('resize')); }catch(e){}
+  }
+}
+
+function exitStageFullscreen(){
+  uiStageFullscreen = false;
+  syncFsUi();
+  try{ window.dispatchEvent(new Event('resize')); }catch(e){}
+}
+
+function toggleStageFullscreen(){
+  if (uiStageFullscreen) exitStageFullscreen();
+  else enterStageFullscreen();
+}
+
+if (fsBtn) {
+  fsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleStageFullscreen();
+  });
+}
+
+if (openChatBtn) {
+  openChatBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDockedChat();
+  });
+}
+
+// Clear unread dot when user scrolls down to the bottom.
+const chatBoxEl = document.getElementById('chatBox');
+if (chatBoxEl) {
+  chatBoxEl.addEventListener('scroll', () => {
+    try{ clearChatUnreadIfAtBottom(); }catch(e){}
+  }, { passive: true });
+}
+
+// initial state
+try{ dockChatIntoStage(); }catch(e){}
+try{ closeDockedChat(); }catch(e){}
+syncFsUi();
+try{ setStageScreenVisible(false); }catch(e){}
+let screenZoom = 1;
+const SCREEN_ZOOM_MIN  = 1;
+const SCREEN_ZOOM_MAX  = 3;
+const SCREEN_ZOOM_STEP = 0.25;
+let lastRenderedScreenSid = null;
+
+// pan state (only meaningful when zoom > 1)
+let panX = 0;
+let panY = 0;
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function updatePannableUI() {
+  if (screenZoom > 1) screenTileEl.classList.add('is-pannable');
+  else screenTileEl.classList.remove('is-pannable', 'is-grabbing');
+}
+
+function clampPanToBounds() {
+  const rect = screenTileEl.getBoundingClientRect();
+  const maxX = (rect.width  * (screenZoom - 1)) / 2;
+  const maxY = (rect.height * (screenZoom - 1)) / 2;
+  panX = clamp(panX, -maxX, maxX);
+  panY = clamp(panY, -maxY, maxY);
+}
+
+function applyTransformToActiveScreen() {
+  const item = activeScreenSid ? screenShares.get(activeScreenSid) : null;
+  if (!item || !item.el) return;
+
+  if (screenZoom <= 1) { panX = 0; panY = 0; }
+  clampPanToBounds();
+
+  item.el.style.transform = `translate(${panX}px, ${panY}px) scale(${screenZoom})`;
+  item.el.style.transformOrigin = 'center center';
+  updatePannableUI();
+}
+
+function applyZoomToActiveScreen() {
+  try {
+    // if active changed, reset zoom + pan
+    if (activeScreenSid !== lastRenderedScreenSid) {
+      screenZoom = 1;
+      panX = 0; panY = 0;
+      lastRenderedScreenSid = activeScreenSid;
+      updateZoomButtons();
+      updatePannableUI();
+    }
+    applyTransformToActiveScreen();
+  } catch (e) {}
+}
+
+function updateZoomButtons() {
+  const hasScreen = !!activeScreenSid && screenShares && screenShares.has(activeScreenSid);
+  if (!hasScreen) {
+    if (zoomOutBtn) zoomOutBtn.disabled = true;
+    if (zoomInBtn)  zoomInBtn.disabled  = true;
+    return;
+  }
+  if (zoomOutBtn) zoomOutBtn.disabled = (screenZoom <= SCREEN_ZOOM_MIN + 1e-9);
+  if (zoomInBtn)  zoomInBtn.disabled  = (screenZoom >= SCREEN_ZOOM_MAX - 1e-9);
+}
+
+function resetScreenZoomAndPan() {
+  screenZoom = 1;
+  panX = 0; panY = 0;
+  applyTransformToActiveScreen();
+  updateZoomButtons();
+}
+
+function resetScreenZoom() { resetScreenZoomAndPan(); }
+
+if (zoomInBtn) {
+  zoomInBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    screenZoom = clamp(screenZoom + SCREEN_ZOOM_STEP, SCREEN_ZOOM_MIN, SCREEN_ZOOM_MAX);
+    applyTransformToActiveScreen();
+    updateZoomButtons();
+  });
+}
+
+if (zoomOutBtn) {
+  zoomOutBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    screenZoom = clamp(screenZoom - SCREEN_ZOOM_STEP, SCREEN_ZOOM_MIN, SCREEN_ZOOM_MAX);
+    if (screenZoom <= 1) { panX = 0; panY = 0; }
+    applyTransformToActiveScreen();
+    updateZoomButtons();
+  });
+}
+
+// Drag to move when zooming in
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+let panBaseX = 0;
+let panBaseY = 0;
+
+screenTileEl.addEventListener('pointerdown', (e) => {
+  if (screenZoom <= 1) return;
+  if (e.target && e.target.closest && e.target.closest('.screen-zoom-controls')) return;
+
+  isPanning = true;
+  screenTileEl.classList.add('is-grabbing');
+  panStartX = e.clientX;
+  panStartY = e.clientY;
+  panBaseX = panX;
+  panBaseY = panY;
+
+  try { screenTileEl.setPointerCapture(e.pointerId); } catch (err) {}
+  e.preventDefault();
+});
+
+screenTileEl.addEventListener('pointermove', (e) => {
+  if (!isPanning) return;
+  const dx = e.clientX - panStartX;
+  const dy = e.clientY - panStartY;
+  panX = panBaseX + dx;
+  panY = panBaseY + dy;
+  applyTransformToActiveScreen();
+  e.preventDefault();
+});
+
+function endPan(e) {
+  if (!isPanning) return;
+  isPanning = false;
+  screenTileEl.classList.remove('is-grabbing');
+  try { if (e && e.pointerId != null) screenTileEl.releasePointerCapture(e.pointerId); } catch (err) {}
+}
+
+screenTileEl.addEventListener('pointerup', endPan);
+screenTileEl.addEventListener('pointercancel', endPan);
+
+// keep pan within bounds after resizing/splitting
+window.addEventListener('resize', () => {
+  applyTransformToActiveScreen();
+});
+
+updateZoomButtons();
+updatePannableUI();
+
+
+  function getDisplayName(participant) {
+    // ưu tiên CHAT_USERNAME cho local (đỡ bị sid/identity lạ)
+    if (currentRoom && participant && participant.sid === currentRoom.localParticipant?.sid) {
+      return CHAT_USERNAME || participant.name || participant.identity || 'You';
+    }
+    return (participant && (participant.name || participant.identity)) ? (participant.name || participant.identity) : 'User';
+  }
+
+  function getCameraPlaceholderHtml() {
+    return `
+      <div class="placeholder">
+        <span class="material-symbols-outlined">videocam_off</span>
+        <div>Camera off</div>
+      </div>
+    `;
+  }
+
+  
+  function updateMicIndicator(sid, muted) {
+    const tile = participantTiles.get(sid);
+    if (!tile) return;
+    const badge = tile.querySelector('.mic-badge');
+    const icon = tile.querySelector('.mic-icon');
+    if (!badge || !icon) return;
+
+    const isMuted = !!muted;
+    icon.textContent = isMuted ? 'mic_off' : 'mic';
+    badge.classList.toggle('is-muted', isMuted);
+    badge.classList.remove('is-unknown');
+    badge.title = isMuted ? 'Mic muted' : 'Mic on';
+  }
+
+  function setMicUnknown(sid) {
+    const tile = participantTiles.get(sid);
+    if (!tile) return;
+    const badge = tile.querySelector('.mic-badge');
+    const icon = tile.querySelector('.mic-icon');
+    if (!badge || !icon) return;
+
+    icon.textContent = 'mic';
+    badge.classList.remove('is-muted');
+    badge.classList.add('is-unknown');
+    badge.title = 'Mic status';
+  }
+
+  function getTrackPublicationsSafe(participant) {
+    if (!participant) return [];
+    try {
+      if (typeof participant.getTrackPublications === 'function') {
+        return participant.getTrackPublications() || [];
+      }
+    } catch (e) {}
+
+    const m = participant.tracks || participant.trackPublications || participant._trackPublications;
+    try {
+      if (m && typeof m.values === 'function') return Array.from(m.values());
+    } catch (e) {}
+    return [];
+  }
+
+
+  function isAudioPublication(pub){
+    if (!pub) return false;
+    try {
+      const kind = (pub.kind != null) ? pub.kind
+        : (pub.trackKind != null) ? pub.trackKind
+        : (pub.track && pub.track.kind != null) ? pub.track.kind
+        : null;
+
+      const source = (pub.source != null) ? pub.source
+        : (pub.track && pub.track.source != null) ? pub.track.source
+        : null;
+
+      const ks = String(kind || '').toLowerCase();
+      const ss = String(source || '').toLowerCase();
+
+      // Screen-share audio is still "audio" kind, but we don't want to treat it as mic.
+      if (ss.includes('screen')) return false;
+
+      // Prefer explicit microphone source if available
+      if (ss.includes('microphone') || ss === 'mic') return true;
+      if (ks.includes('microphone') || ks === 'mic') return true;
+
+      // Fallback: any non-screen audio kind
+      return ks.includes('audio');
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function getAudioTrackPublicationsSafe(participant) {
+    if (!participant) return [];
+
+    // Newer SDKs expose audioTrackPublications as a Map
+    try {
+      const m = participant.audioTrackPublications;
+      if (m && typeof m.values === 'function') {
+        const pubs = Array.from(m.values()).filter(p => p && isAudioPublication(p));
+        if (pubs.length) return pubs;
+      }
+    } catch (e) {}
+
+    // Fallback: filter from all publications
+    try {
+      return getTrackPublicationsSafe(participant).filter(p => p && isAudioPublication(p));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function getPubMutedSafe(pub){
+  if (!pub) return null;
+
+  // TrackPublication: isMuted (bool) or isMuted() (fn) depending on SDK version
+  try {
+    const v1 = pub.isMuted;
+    if (typeof v1 === 'boolean') return v1;
+    if (typeof v1 === 'function') {
+      const r = v1.call(pub);
+      if (typeof r === 'boolean') return r;
+    }
+  } catch (e) {}
+
+  // Some SDKs use "muted"
+  try {
+    const v2 = pub.muted;
+    if (typeof v2 === 'boolean') return v2;
+    if (typeof v2 === 'function') {
+      const r = v2.call(pub);
+      if (typeof r === 'boolean') return r;
+    }
+  } catch (e) {}
+
+  // Publication enabled flags (rare but exist in some wrappers)
+  try {
+    const en = (pub.isEnabled != null) ? pub.isEnabled : pub.enabled;
+    if (typeof en === 'boolean') return !en;
+    if (typeof en === 'function') {
+      const r = en.call(pub);
+      if (typeof r === 'boolean') return !r;
+    }
+  } catch (e) {}
+
+  // Track: sometimes exposes enabled/muted state when subscribed
+  try {
+    const t = pub.track;
+    if (t) {
+      const a = t.isMuted;
+      if (typeof a === 'boolean') return a;
+      const b = t.muted;
+      if (typeof b === 'boolean') return b;
+
+      const en = t.isEnabled;
+      if (typeof en === 'boolean') return !en;
+      if (typeof en === 'function') {
+        const r = en.call(t);
+        if (typeof r === 'boolean') return !r;
+      }
+
+      // MediaStreamTrack.enabled is the strongest signal (when available)
+      const mst = t.mediaStreamTrack || t._mediaStreamTrack;
+      if (mst && typeof mst.enabled === 'boolean') return !mst.enabled;
+    }
+  } catch (e) {}
+
+  return null;
+}
+
+  // Mic UI anti-flap cache
+  // confidence: 2=hard (SDK mute flags), 1=soft (heuristic), 0=unknown
+  const micStateCache = new Map(); // sid -> { muted: boolean|null, confidence: number, updatedAt: number }
+
+  function applyMicUnknown(sid) {
+    const now = Date.now();
+    const prev = micStateCache.get(sid);
+    // Don't overwrite a known state with "unknown"
+    if (prev && prev.confidence >= 1) return;
+    try { setMicUnknown(sid); } catch (e) {}
+    micStateCache.set(sid, { muted: null, confidence: 0, updatedAt: now });
+  }
+
+  function applyMicState(sid, muted, confidence) {
+    const now = Date.now();
+    const nextMuted = (typeof muted === 'boolean') ? muted : null;
+    const prev = micStateCache.get(sid);
+
+    if (nextMuted === null) { applyMicUnknown(sid); return; }
+
+    if (prev && prev.muted === nextMuted && prev.confidence >= confidence) {
+      prev.updatedAt = now;
+      return;
+    }
+
+    // Anti-flap: don't let a weaker signal flip a stronger, recent state.
+    if (prev && prev.confidence > confidence && prev.muted !== nextMuted && (now - prev.updatedAt) < 1200) {
+      return;
+    }
+
+    try { updateMicIndicator(sid, nextMuted); } catch (e) {}
+    micStateCache.set(sid, { muted: nextMuted, confidence: confidence, updatedAt: now });
+  }
+
+
+
+function updateMicIndicatorFromParticipant(participant) {
+  if (!participant) return;
+  const sid = participant.sid;
+  try { if (shadowedSids && shadowedSids.has(sid)) return; } catch (e) {}
+
+  const isLocal = !!(currentRoom && currentRoom.localParticipant && sid === currentRoom.localParticipant.sid);
+
+  // Local: reflect our own toggle state (most reliable)
+  if (isLocal) {
+    try { applyMicState(sid, ((!localHasAudio) || (!micEnabled)), 2); } catch (e) {}
+    return;
+  }
+
+  // 0) Peer-broadcasted mic state (authoritative when available)
+  try {
+    const key = sidToIdentityKey.get(sid) || getIdentityKey(participant);
+    const b = key ? micBroadcastByKey.get(key) : null;
+    if (b && typeof b.enabled === 'boolean') {
+      const ts = Number(b.ts || 0);
+      if (!ts || (Date.now() - ts) < MIC_BROADCAST_TTL_MS) {
+        applyMicState(sid, !b.enabled, 2);
+        return;
+      }
+    }
+  } catch (e) {}
+
+
+  const firstSeen = participantSeenAt.get(sid) || 0;
+  const ageMs = firstSeen ? (Date.now() - firstSeen) : 999999;
+
+  // 0) If they're speaking / audio level > 0, it's definitely NOT muted.
+  try {
+    const al = participant.audioLevel;
+    if (typeof al === 'number' && al > 0.02) {
+      applyMicState(sid, false, 1);
+      return;
+    }
+  } catch (e) {}
+  try {
+    const sp = participant.isSpeaking;
+    if (sp === true) {
+      applyMicState(sid, false, 1);
+      return;
+    }
+  } catch (e) {}
+
+  // 1) Explicit microphone enabled flag (if exposed by SDK)
+  try {
+    const v = participant.isMicrophoneEnabled;
+    if (typeof v === 'boolean') {
+      if (v === false) { applyMicState(sid, true, 2); return; }
+      if (v === true && ageMs > 200) { applyMicState(sid, false, 1); return; }
+    } else if (typeof v === 'function') {
+      const r = v.call(participant);
+      if (typeof r === 'boolean') {
+        if (r === false) { applyMicState(sid, true, 2); return; }
+        if (r === true && ageMs > 200) { applyMicState(sid, false, 1); return; }
+      }
+    }
+  } catch (e) {}
+
+  // 2) Publications-based (works even when not subscribed to audio)
+  const pubs = getAudioTrackPublicationsSafe(participant) || [];
+  if (pubs.length) {
+    const states = pubs.map(getPubMutedSafe).filter(v => typeof v === 'boolean');
+    if (states.some(v => v === false)) { applyMicState(sid, false, 2); return; }
+    if (states.length && states.every(v => v === true)) { applyMicState(sid, true, 2);  return; }
+
+    // We have pubs but can't read mute flags yet (happens on some mobile timings).
+    // After a short grace, assume muted (safe default) unless later events prove otherwise.
+    if (ageMs >= 1200) { applyMicState(sid, true, 1); return; }
+
+    applyMicUnknown(sid);
+    return;
+  }
+
+  // 3) No audio pubs: often means remote turned mic off (unpublished).
+  if (ageMs >= 800) { applyMicState(sid, true, 1); return; }
+
+  applyMicUnknown(sid);
+}
+
+
+const audioBound = new WeakSet();
+  function bindAudioIndicator(participant) {
+    if (!participant || audioBound.has(participant)) return;
+    try { if (shadowedSids && shadowedSids.has(participant.sid)) return; } catch (e) {}
+    audioBound.add(participant);
+
+    // apply current state
+    try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+
+    // listen changes
+    try {
+      participant.on('trackMuted', (pub) => {
+        if (pub && isAudioPublication(pub)) updateMicIndicatorFromParticipant(participant);
+      });
+      participant.on('trackUnmuted', (pub) => {
+        if (pub && isAudioPublication(pub)) updateMicIndicatorFromParticipant(participant);
+      });
+      participant.on('trackPublished', (pub) => {
+        if (pub && isAudioPublication(pub)) updateMicIndicatorFromParticipant(participant);
+      });
+      participant.on('trackUnpublished', (pub) => {
+        if (pub && isAudioPublication(pub)) updateMicIndicatorFromParticipant(participant);
+      });
+    } catch (e) {}
+  }
+
+function updateVideoTilesLayout() {
+  if (!videosEl) return;
+
+  const isMobile = (() => {
+    try { return !!(window.matchMedia && window.matchMedia('(max-width: 640px)').matches); } catch (e) {}
+    try { return (window.innerWidth || 9999) <= 640; } catch (e) {}
+    return false;
+  })();
+
+  const hasScreen = !!(screenPaneEl && !screenPaneEl.classList.contains('is-hidden'));
+  const n = (participantTiles && typeof participantTiles.size === 'number')
+    ? participantTiles.size
+    : (videosEl.children ? videosEl.children.length : 0);
+
+  videosEl.classList.remove(
+    'is-gallery', 'gallery-1', 'gallery-2', 'gallery-4',
+    'mobile-1', 'mobile-2', 'mobile-3plus'
+  );
+
+  // Mobile: requested layout (independent of screen share)
+  if (isMobile) {
+    if (n <= 1) videosEl.classList.add('mobile-1');
+    else if (n === 2) videosEl.classList.add('mobile-2');
+    else videosEl.classList.add('mobile-3plus');
+    return;
+  }
+
+  // Desktop/tablet: auto gallery only when there is NO active screen share.
+  if (hasScreen) return;
+
+  if (n === 1) {
+    videosEl.classList.add('is-gallery', 'gallery-1');
+  } else if (n === 2) {
+    videosEl.classList.add('is-gallery', 'gallery-2');
+  } else if (n === 3 || n === 4) {
+    videosEl.classList.add('is-gallery', 'gallery-4');
+  }
+  // 5+ => keep default tile sizing
+}
+
+// keep layout correct on rotate / resize
+window.addEventListener('resize', () => {
+  try { updateVideoTilesLayout(); } catch (e) {}
+}, { passive: true });
+function setStageScreenVisible(visible) {
+    if (!screenPaneEl || !splitterEl) return;
+
+    if (visible) {
+      screenPaneEl.classList.remove('is-hidden');
+      splitterEl.classList.remove('is-hidden');
+
+      
+      try { updateVideoTilesLayout(); } catch (e) {}
+// zoom buttons only make sense when we have a screen
+      if (zoomInBtn)  zoomInBtn.classList.remove('is-hidden');
+      if (zoomOutBtn) zoomOutBtn.classList.remove('is-hidden');
+
+      // If we're already in fullscreen, default to max screen width
+      // (participants list stays at 1 column minimum).
+      try{
+        if (uiStageFullscreen && stageEl && screenPaneEl && !screenPaneEl.classList.contains('is-hidden')) {
+          const rect = stageEl.getBoundingClientRect();
+          const minScreen = getScreenMinPx();
+          const minUsers  = getUsersMinPx();
+          const splitW = splitterEl ? (splitterEl.getBoundingClientRect().width || 8) : 8;
+          const chatW  = (chatPaneEl && !chatPaneEl.classList.contains('is-hidden')) ? getChatWidthPx() : 0;
+          const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
+          screenPaneEl.style.flexBasis = `${max}px`;
+          try { localStorage.setItem('screenPaneBasisPx', String(max)); } catch (e) {}
+        }
+      }catch(e){}
+
+      return;
+    }
+
+    // No active screen share: hide the entire screen-share pane (and splitter)
+    screenPaneEl.classList.add('is-hidden');
+    splitterEl.classList.add('is-hidden');
+
+    
+    try { updateVideoTilesLayout(); } catch (e) {}
+// hide zoom buttons
+    if (zoomInBtn)  zoomInBtn.classList.add('is-hidden');
+    if (zoomOutBtn) zoomOutBtn.classList.add('is-hidden');
+
+    // clear screen tile + reset zoom/pan
+    try {
+      const media = screenTileEl.querySelector('.media');
+      if (media) media.innerHTML = '';
+    } catch (e) {}
+    activeScreenSid = null;
+    lastRenderedScreenSid = null;
+    screenZoom = 1;
+    panX = 0; panY = 0;
+    updateZoomButtons();
+    updatePannableUI();
+    try { screenTileEl.classList.remove('is-speaking'); } catch (e) {}
+
+    // keep placeholder ready for next share (not visible while pane is hidden)
+    try{
+      if (screenSlotEl) {
+        if (!screenSlotEl.contains(screenPlaceholderEl)) {
+          screenSlotEl.innerHTML = '';
+          screenSlotEl.appendChild(screenPlaceholderEl);
+        }
+      }
+    }catch(e){}
+  }
+
+  function pickNewestScreenSid() {
+    let last = null;
+    for (const sid of screenShares.keys()) last = sid;
+    return last;
+  }
+
+  function renderActiveScreen() {
+    const hasScreen = screenShares.size > 0;
+    setStageScreenVisible(hasScreen);
+
+    if (!hasScreen) return;
+
+    // chọn active nếu chưa có hoặc bị mất
+    if (!activeScreenSid || !screenShares.has(activeScreenSid)) {
+      activeScreenSid = pickNewestScreenSid();
+    }
+    const item = activeScreenSid ? screenShares.get(activeScreenSid) : null;
+    if (activeScreenSid !== lastRenderedScreenSid) {
+      screenZoom = 1;
+      panX = 0; panY = 0;
+      lastRenderedScreenSid = activeScreenSid;
+      updateZoomButtons();
+      updatePannableUI();
+    }
+    if (!item) return;
+
+    // attach vào screen tile
+    const nameTag = screenTileEl.querySelector('.name-tag');
+    const media   = screenTileEl.querySelector('.media');
+    if (nameTag) nameTag.textContent = `${item.name} (Screen)`;
+    if (media) {
+      media.innerHTML = '';
+      
+      media.appendChild(item.el);
+      applyZoomToActiveScreen();
+
+      // speaking highlight for current screen sharer
+      try {
+        const p = (currentRoom && currentRoom.localParticipant && currentRoom.localParticipant.sid === activeScreenSid)
+          ? currentRoom.localParticipant
+          : (currentRoom && currentRoom.participants && currentRoom.participants.get(activeScreenSid));
+        screenTileEl.classList.toggle('is-speaking', !!(p && p.isSpeaking));
+      } catch (e) {}
+    }
+
+    // đảm bảo tile nằm trong slot
+    if (screenSlotEl && !screenSlotEl.contains(screenTileEl)) {
+      screenSlotEl.innerHTML = '';
+      screenSlotEl.appendChild(screenTileEl);
+    }
+  }
+
+
+  // Keep bandwidth low: subscribe only the active screen-share track (best-effort).
+  // NOTE: This does NOT force-quit remote sharing on server; it only stops receiving old screen tracks quickly.
+  // The actual "single active sharer" is enforced cooperatively via data channel claim messages.
+  function setOnlyActiveScreenSubscribed() {
+    if (!currentRoom) return;
+    try {
+      screenShares.forEach((item, sid) => {
+        const pub = item && item.publication;
+        if (!pub || typeof pub.setSubscribed !== 'function') return;
+        const shouldSub = (sid === activeScreenSid);
+        try { pub.setSubscribed(!!shouldSub); } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
+
+
+  function getIdentityKey(participant){
+    if (!participant) return '';
+    // IMPORTANT: never use display-name for identity (can collide across users)
+    const raw = (participant.identity != null) ? participant.identity
+      : (participant.sid != null) ? participant.sid
+      : '';
+    const key = String(raw || '').trim();
+    return key || String(participant.sid || '').trim();
+  }
+
+  function shadowParticipantSid(oldSid){
+    if (!oldSid) return;
+    try { shadowedSids.add(oldSid); } catch (e) {}
+
+    // Remove UI tile + all attached media for the old connection
+    try { removeParticipantTile(oldSid); } catch (e) {}
+    try { cleanupParticipantMediaElements(oldSid); } catch (e) {}
+
+    // Remove any screen share UI for that sid
+    try {
+      const item = screenShares.get(oldSid);
+      if (item && item.el) { try { item.el.remove(); } catch (e) {} }
+      screenShares.delete(oldSid);
+      if (activeScreenSid === oldSid) activeScreenSid = null;
+      try { renderActiveScreen(); } catch (e) {}
+    } catch (e) {}
+
+    try { participantSeenAt.delete(oldSid); } catch (e) {}
+    try { participantNames.delete(oldSid); } catch (e) {}
+    try { participantTiles.delete(oldSid); } catch (e) {}
+
+    try { updateTopbarCount(); } catch (e) {}
+  }
+
+  function registerParticipantIdentity(participant){
+    if (!participant) return;
+    const sid = participant.sid;
+    const key = getIdentityKey(participant);
+    if (!key) return;
+
+    const prevSid = identityToActiveSid.get(key);
+    if (prevSid && prevSid !== sid) {
+      // Prefer the newer connection (joinedAt if available; otherwise, the one we just saw)
+      let preferNew = true;
+      try {
+        const prevP = (currentRoom && currentRoom.participants && currentRoom.participants.get(prevSid)) ? currentRoom.participants.get(prevSid) : null;
+        const prevJoined = prevP && prevP.joinedAt ? (new Date(prevP.joinedAt)).getTime() : 0;
+        const newJoined  = participant && participant.joinedAt ? (new Date(participant.joinedAt)).getTime() : 0;
+
+        if (prevJoined && newJoined) preferNew = (newJoined >= prevJoined);
+        else if (prevJoined && !newJoined) preferNew = false;
+        else if (!prevJoined && newJoined) preferNew = true;
+      } catch (e) {}
+
+      if (preferNew) {
+        shadowParticipantSid(prevSid);
+        identityToActiveSid.set(key, sid);
+      } else {
+        shadowParticipantSid(sid);
+        // keep prevSid
+        identityToActiveSid.set(key, prevSid);
+      }
+    } else {
+      identityToActiveSid.set(key, sid);
+    }
+
+    sidToIdentityKey.set(sid, key);
+    try {
+      const active = identityToActiveSid.get(key);
+      if (active === sid) shadowedSids.delete(sid);
+    } catch (e) {}
+  }
+
+
+  function ensureParticipantTile(sid, name) {
+    if (!videosEl) return null;
+    try { if (shadowedSids && shadowedSids.has(sid)) return null; } catch (e) {}
+
+    let tile = participantTiles.get(sid);
+    if (tile) {
+      const tag = tile.querySelector('.name-tag');
+      if (tag) tag.textContent = name;
+      participantNames.set(sid, name);
+      if (!participantSeenAt.has(sid)) participantSeenAt.set(sid, Date.now());
+      return tile;
+    }
+
+    tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.dataset.sid = sid;
+    tile.innerHTML = `
+      <div class="name-tag"></div>
+      <div class="media">${getCameraPlaceholderHtml()}</div>
+      <div class="mic-badge is-unknown" title="Microphone">
+        <span class="material-symbols-outlined mic-icon">mic</span>
+      </div>
+    `;
+
+    const tag = tile.querySelector('.name-tag');
+    if (tag) tag.textContent = name;
+
+    participantTiles.set(sid, tile);
+    participantNames.set(sid, name);
+    if (!participantSeenAt.has(sid)) participantSeenAt.set(sid, Date.now());
+
+    videosEl.appendChild(tile);
+    try { updateVideoTilesLayout(); } catch (e) {}
+    try { updateTopbarCount(); } catch (e) {}
+    // default: unknown mic state (avoid falsely showing red-muted on mobile)
+    try { setMicUnknown(sid); } catch (e) {}
+    return tile;
+  }
+
+  function attachCameraVideoToTile(sid, name, videoEl, isLocal) {
+    const tile = ensureParticipantTile(sid, name);
+    if (!tile) return;
+
+    const media = tile.querySelector('.media');
+    if (!media) return;
+
+    // chỉ giữ 1 camera video
+    media.innerHTML = '';
+
+    // dataset để apply speaker mute/cleanup
+    videoEl.dataset.participant = sid;
+    videoEl.dataset.source = 'camera';
+
+    // mirror cho local cam trước
+    if (isLocal && cameraFacingMode === 'user') {
+      videoEl.classList.add('mirror-video');
+    } else {
+      videoEl.classList.remove('mirror-video');
+    }
+
+    // Auto adjust portrait/landscape for camera tile
+    const applyOrientation = () => {
+      const w = Number(videoEl.videoWidth || 0);
+      const h = Number(videoEl.videoHeight || 0);
+      if (!w || !h) return;
+
+      // portrait (mobile) => contain to avoid cropping
+      tile.classList.toggle('is-portrait', h > w);
+    };
+
+    // Some browsers only know dimensions after metadata is loaded
+    try { videoEl.addEventListener('loadedmetadata', applyOrientation); } catch (e) {}
+    // When track dimensions change (rotation, device switch)
+    try { videoEl.addEventListener('resize', applyOrientation); } catch (e) {}
+    // Best-effort fallback
+    setTimeout(applyOrientation, 200);
+
+    media.appendChild(videoEl);
+    applyOrientation();
+  }
+
+  function removeCameraFromTile(sid) {
+    const tile = participantTiles.get(sid);
+    if (!tile) return;
+    const media = tile.querySelector('.media');
+    if (!media) return;
+    media.innerHTML = getCameraPlaceholderHtml();
+    tile.classList.remove('is-portrait');
+  }
+
+  function removeParticipantTile(sid) {
+    const tile = participantTiles.get(sid);
+    if (tile) {
+      try { tile.remove(); } catch (e) {}
+    }
+    participantTiles.delete(sid);
+    participantNames.delete(sid);
+
+    try { updateVideoTilesLayout(); } catch (e) {}
+    try { updateTopbarCount(); } catch (e) {}
+}
+
+  // ---- Speaking indicator (active speaker border) ----
+  const speakingBound = new WeakSet();
+
+  function bindSpeakingIndicator(participant) {
+    if (!participant || speakingBound.has(participant)) return;
+    try { if (shadowedSids && shadowedSids.has(participant.sid)) return; } catch (e) {}
+    speakingBound.add(participant);
+
+    // apply current state (best-effort)
+    try {
+      const tile = participantTiles.get(participant.sid);
+      if (tile) tile.classList.toggle('is-speaking', !!participant.isSpeaking);
+    } catch (e) {}
+
+    participant.on('isSpeakingChanged', (speaking) => {
+      const tile = participantTiles.get(participant.sid);
+      if (tile) tile.classList.toggle('is-speaking', !!speaking);
+
+      // if this participant is currently the active screen sharer, also highlight screen tile
+      if (participant.sid === activeScreenSid) {
+        screenTileEl.classList.toggle('is-speaking', !!speaking);
+      }
+    });
+  }
+
+  function updateSpeakingFromActiveSpeakers(speakers) {
+    const set = new Set((speakers || []).map(p => p.sid));
+
+    // ensure tiles exist and speaking listener is bound
+    (speakers || []).forEach(p => {
+      try {
+        if (shadowedSids && shadowedSids.has(p.sid)) return;
+        const name = getDisplayName(p);
+        ensureParticipantTile(p.sid, name);
+        bindSpeakingIndicator(p);
+      } catch (e) {}
+    });
+
+    participantTiles.forEach((tile, sid) => {
+      tile.classList.toggle('is-speaking', set.has(sid));
+    });
+
+    if (activeScreenSid) {
+      screenTileEl.classList.toggle('is-speaking', set.has(activeScreenSid));
+    } else {
+      screenTileEl.classList.remove('is-speaking');
+    }
+  }
+
+  function cleanupParticipantMediaElements(sid) {
+    // gỡ tất cả el đã attach có data-participant
+    document.querySelectorAll(`[data-participant="${sid}"]`).forEach(el => {
+      try { el.remove(); } catch (e) {}
+    });
+  }
+
+  function applySpeakerMuteToCallMedia() {
+    // Mute/unmute tất cả media của participants trong cuộc gọi
+    const mediaEls = document.querySelectorAll('audio[data-participant], video[data-participant]');
+    mediaEls.forEach(el => {
+      el.muted = !speakerEnabled; // speakerEnabled=false => muted=true
+    });
+  }
+
+  function updateMicUI() {
+    if (!toggleMicBtn) return;
+    if (toggleMicIcon) toggleMicIcon.textContent = micEnabled ? 'mic' : 'mic_off';
+    toggleMicBtn.title = micEnabled ? 'Mute microphone' : 'Unmute microphone';
+    if (micEnabled) toggleMicBtn.classList.remove('is-muted');
+    else toggleMicBtn.classList.add('is-muted');
+
+    // also update local tile mic indicator
+    try {
+      if (currentRoom && currentRoom.localParticipant) {
+        updateMicIndicator(currentRoom.localParticipant.sid, (!localHasAudio) || (!micEnabled));
+      }
+    } catch (e) {}
+  }
+
+  function updateCameraUI() {
+    if (!toggleCameraBtn) return;
+    if (toggleCameraIcon) toggleCameraIcon.textContent = cameraEnabled ? 'videocam' : 'videocam_off';
+    toggleCameraBtn.title = cameraEnabled ? 'Turn camera off' : 'Turn camera on';
+  }
+
+  function updateScreenUI() {
+    if (!toggleScreenBtn) return;
+    if (toggleScreenIcon) toggleScreenIcon.textContent = screenShareEnabled ? 'stop_screen_share' : 'screen_share';
+    toggleScreenBtn.title = screenShareEnabled ? 'Stop sharing' : 'Share screen';
+  }
+
+  async function disableLocalCamera() {
+    if (!currentRoom) return;
+    if (!cameraEnabled) return;
+
+    try {
+      if (localVideoTrack) {
+        try { currentRoom.localParticipant.unpublishTrack(localVideoTrack); } catch (e) {}
+        try { localVideoTrack.stop(); } catch (e) {}
+      }
+      if (localVideoElement) {
+        try { localVideoElement.remove(); } catch (e) {}
+      }
+
+      removeCameraFromTile(currentRoom.localParticipant.sid);
+
+      localVideoTrack = null;
+      localVideoElement = null;
+
+      cameraEnabled = false;
+      updateCameraUI();
+    } catch (e) {
+      console.error("Disable camera error:", e);
+    }
+  }
+
+  async function enableLocalCamera() {
+    if (!currentRoom) return;
+    if (cameraEnabled) return;
+
+    try {
+      // tạo track mới (tôn trọng facingMode hiện tại)
+      const track = await LivekitClient.createLocalVideoTrack({ facingMode: cameraFacingMode });
+      await currentRoom.localParticipant.publishTrack(track);
+
+      const el = track.attach();
+      el.dataset.participant = currentRoom.localParticipant.sid;
+      el.dataset.source = 'camera';
+
+      localVideoTrack = track;
+      localVideoElement = el;
+
+      const name = CHAT_USERNAME || currentRoom.localParticipant.identity || 'You';
+      attachCameraVideoToTile(currentRoom.localParticipant.sid, name, el, true);
+
+      cameraEnabled = true;
+      updateCameraUI();
+      applySpeakerMuteToCallMedia();
+    } catch (e) {
+      console.error("Enable camera error:", e);
+    }
+  }
+
+  async function toggleLocalCamera() {
+    if (!currentRoom) return;
+    if (cameraEnabled) await disableLocalCamera();
+    else await enableLocalCamera();
+  }
+
+  async function stopScreenShareInternal() {
+    const hadLocalShareIntent = !!myScreenShareStartedAt;
+    startingScreenShare = false;
+    myScreenShareStartedAt = null;
+
+    // unpublish + stop tracks
+    if (currentRoom && currentRoom.localParticipant && localScreenTracks.length) {
+      for (const t of localScreenTracks) {
+        try { currentRoom.localParticipant.unpublishTrack(t); } catch (e) {}
+        try { if (typeof t.stop === 'function') t.stop(); } catch (e) {}
+      }
+    }
+    localScreenTracks = [];
+
+    // remove UI element + map
+    if (currentRoom && currentRoom.localParticipant) {
+      const sid = currentRoom.localParticipant.sid;
+      const item = screenShares.get(sid);
+      if (item && item.el) {
+        try { item.el.remove(); } catch (e) {}
+      }
+      screenShares.delete(sid);
+
+      if (activeScreenSid === sid) {
+        activeScreenSid = null;
+      lastRenderedScreenSid = null;
+      screenZoom = 1;
+      panX = 0; panY = 0;
+      updateZoomButtons();
+      updatePannableUI();
+      }
+    }
+
+    screenShareEnabled = false;
+    updateScreenUI();
+    renderActiveScreen();
+
+    // thông báo nhả quyền share (best-effort)
+    try { if (hadLocalShareIntent) await broadcastScreenShareRelease(); } catch (e) {}
+
+    // restore camera nếu trước đó camera đang bật
+    try {
+      if (toggleCameraBtn) toggleCameraBtn.disabled = false;
+
+      if (cameraDisabledByScreenShare && cameraPrevEnabledBeforeScreen) {
+        await enableLocalCamera();
+      }
+    } catch (e) {}
+
+    cameraDisabledByScreenShare = false;
+    cameraPrevEnabledBeforeScreen = null;
+  }
+
+  // --- Resizer (splitter)
+  function initSplitter() {
+    if (!splitterEl || !stageEl || !screenPaneEl) return;
+
+    let dragging = false;
+    let axis = 'x';
+
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    splitterEl.addEventListener('pointerdown', (e) => {
+      if (splitterEl.classList.contains('is-hidden')) return;
+      dragging = true;
+      splitterEl.setPointerCapture(e.pointerId);
+
+      const dir = getComputedStyle(stageEl).flexDirection;
+      axis = (dir === 'column') ? 'y' : 'x';
+
+      e.preventDefault();
+    });
+
+    splitterEl.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const rect = stageEl.getBoundingClientRect();
+
+      if (axis === 'x') {
+        const x = e.clientX - rect.left;
+        const minScreen = getScreenMinPx();
+        const minUsers  = getUsersMinPx();
+        const splitW = splitterEl.getBoundingClientRect().width || 8;
+        const chatW  = (chatPaneEl && !chatPaneEl.classList.contains('is-hidden')) ? getChatWidthPx() : 0;
+        const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
+        const w = clamp(x, minScreen, max);
+        screenPaneEl.style.flexBasis = `${w}px`;
+        try { localStorage.setItem('screenPaneBasisPx', String(w)); } catch (e) {}
+      } else {
+        const y = e.clientY - rect.top;
+        const min = 220;
+        const max = rect.height - 220;
+        const h = clamp(y, min, max);
+        screenPaneEl.style.flexBasis = `${h}px`;
+        try { localStorage.setItem('screenPaneBasisPxY', String(h)); } catch (e) {}
+      }
+    });
+
+    const endDrag = () => { dragging = false; };
+    splitterEl.addEventListener('pointerup', endDrag);
+    splitterEl.addEventListener('pointercancel', endDrag);
+
+    // restore basis (from previous drag) and clamp to current viewport to avoid overflow
+    function clampSavedBasisToViewport() {
+      try {
+        const rect = stageEl.getBoundingClientRect();
+        const dir = getComputedStyle(stageEl).flexDirection;
+
+        if (dir === 'column') {
+          const raw = Number((screenPaneEl.style.flexBasis || '').replace('px','')) ||
+                      Number(localStorage.getItem('screenPaneBasisPxY') || '');
+          if (!raw) return;
+
+          const min = 220;
+          const max = Math.max(min, rect.height - 220);
+          const h = clamp(raw, min, max);
+          screenPaneEl.style.flexBasis = `${h}px`;
+        } else {
+          const raw = Number((screenPaneEl.style.flexBasis || '').replace('px','')) ||
+                      Number(localStorage.getItem('screenPaneBasisPx') || '');
+          if (!raw) return;
+
+          const minScreen = getScreenMinPx();
+          const minUsers  = getUsersMinPx();
+          const splitW = splitterEl.getBoundingClientRect().width || 8;
+          const chatW  = (chatPaneEl && !chatPaneEl.classList.contains('is-hidden')) ? getChatWidthPx() : 0;
+          const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
+          const w = clamp(raw, minScreen, max);
+          screenPaneEl.style.flexBasis = `${w}px`;
+        }
+      } catch (e) {}
+    }
+
+    // initial restore
+    try {
+      const dir = getComputedStyle(stageEl).flexDirection;
+      if (dir === 'column') {
+        const h = Number(localStorage.getItem('screenPaneBasisPxY') || '');
+        if (h) screenPaneEl.style.flexBasis = `${h}px`;
+      } else {
+        const w = Number(localStorage.getItem('screenPaneBasisPx') || '');
+        if (w) screenPaneEl.style.flexBasis = `${w}px`;
+      }
+    } catch (e) {}
+
+    clampSavedBasisToViewport();
+    window.addEventListener('resize', () => {
+      syncTopbarHeightVar();
+      __usersOneColMinPx = computeUsersOneColMinPx();
+      clampSavedBasisToViewport();
+    });
+  }
+  initSplitter();
+
+  // -------- Login
+  document.getElementById("loginBtn").onclick = async () => {
+    try {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+
+      const res = await fetch(LOGIN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+      if (data.signal_jwt) {
+        SIGNAL_JWT = data.signal_jwt;
+        CHAT_USERNAME = username || 'User';
+
+        document.getElementById("createRoomBtn").disabled = false;
+        document.getElementById("joinBtn").disabled = false;
+        alert("Login success! You can now create or join a room.");
+      } else {
+        alert("Login failed: " + JSON.stringify(data));
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+    }
+  };
+
+  // Copy Room ID buttons (Created + Join)
+function bindCopyIconButton(btn, getText){
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    // Guard: ignore double click while đang ở trạng thái "check"
+    if (btn.dataset.copyLocked === '1') return;
+
+    const value = (typeof getText === 'function' ? getText() : '') || '';
+    const text  = String(value).trim();
+    if (!text) return;
+
+    btn.dataset.copyLocked = '1';
+
+    const icon = btn.querySelector('.material-symbols-outlined') || btn.querySelector('span');
+    const prevTitle = btn.title || 'Copy room ID';
+
+    try {
+      await navigator.clipboard.writeText(text);
+      if (icon) icon.textContent = 'check';
+      btn.title = 'Copied';
+    } catch (err) {
+      console.log('Clipboard error:', err);
+      btn.dataset.copyLocked = '0';
+      return;
+    }
+
+    setTimeout(() => {
+      if (icon) icon.textContent = 'content_copy';
+      btn.title = prevTitle;
+      btn.dataset.copyLocked = '0';
+    }, 3000);
+  });
+}
+
+function getRoomIdForCopy(){
+  // Prefer actual connected room name (nếu đang trong call)
+  try {
+    const roomName = currentRoom?.name ? String(currentRoom.name).trim() : '';
+    if (roomName) return roomName;
+  } catch (e) {}
+
+  const created = document.getElementById('createdRoomId')?.innerText?.trim() || '';
+  const input   = document.getElementById('roomId')?.value?.trim() || '';
+  return created || input || '';
+}
+
+bindCopyIconButton(document.getElementById('copyRoom'), () => document.getElementById('createdRoomId')?.innerText);
+bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
+
+
+  // Send on Enter
+  document.getElementById('chatInput').addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      document.getElementById('sendChatBtn').click();
+    }
+  });
+
+  // Tạo phòng
+  document.getElementById("createRoomBtn").onclick = async () => {
+    try {
+      const res = await fetch(CREATE_ROOM_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + SIGNAL_JWT,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ title: "Test Room" })
+      });
+      const data = await res.json();
+
+      if (data.room_id) {
+        document.getElementById("createdRoomId").innerText = data.room_id;
+        document.getElementById("roomId").value = data.room_id;
+      } else {
+        alert("Create room failed: " + JSON.stringify(data));
+      }
+    } catch (err) {
+      console.error("Create room error:", err);
+    }
+  };
+
+  // Reset toàn bộ UI call
+  function resetCallUI() {
+    // tiles + screen slot
+    if (videosEl) videosEl.innerHTML = '';
+    if (screenSlotEl) screenSlotEl.innerHTML = '';
+    participantTiles.clear();
+    participantNames.clear();
+    screenShares.clear();
+    participantSeenAt.clear();
+    try { micBroadcastByKey.clear(); } catch (e) {}
+    try { identityToActiveSid.clear(); sidToIdentityKey.clear(); shadowedSids.clear(); } catch (e) {}
+    try { stopParticipantPruneLoop(); } catch (e) {}
+    try { micStateCache && micStateCache.clear && micStateCache.clear(); } catch (e) {}
+    activeScreenSid = null;
+    setStageScreenVisible(false);
+    try { screenTileEl.classList.remove('is-speaking'); } catch (e) {}
+
+    // disable End Call
+    const endBtn = document.getElementById('endBtn');
+    if (endBtn) endBtn.disabled = true;
+
+    // chat
+    resetChatBox();
+    const sendBtn = document.getElementById('sendChatBtn');
+    if (sendBtn) sendBtn.disabled = true;
+
+    // buttons
+    if (toggleCameraBtn) toggleCameraBtn.disabled = true;
+    if (switchCameraBtn) switchCameraBtn.disabled = true;
+    if (toggleMicBtn) toggleMicBtn.disabled = true;
+    if (toggleSpeakerBtn) toggleSpeakerBtn.disabled = true;
+    if (toggleScreenBtn) toggleScreenBtn.disabled = true;
+
+    // state
+    cameraEnabled = true;
+    micEnabled = true;
+    speakerEnabled = true;
+    screenShareEnabled = false;
+    cameraFacingMode = 'user';
+
+    localVideoTrack = null;
+    localVideoElement = null;
+
+    localScreenTracks = [];
+    cameraPrevEnabledBeforeScreen = null;
+    cameraDisabledByScreenShare = false;
+
+    updateCameraUI();
+    updateMicUI();
+    if (toggleSpeakerIcon) toggleSpeakerIcon.textContent = 'volume_up';
+    if (toggleSpeakerBtn) toggleSpeakerBtn.title = 'Mute call audio';
+    updateScreenUI();
+
+    // Topbar
+    try { setTopbarStatus(false, ''); updateTopbarCount(); } catch (e) {}
+  }
+
+  // ---- Join room
+  document.getElementById("joinBtn").onclick = async () => {
+    try {
+      const roomId = document.getElementById("roomId").value.trim();
+      if (!roomId) { alert("Please enter a room ID first!"); return; }
+
+      // token
+      const res = await fetch(PORTAL_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + SIGNAL_JWT,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ room: roomId })
+      });
+
+      let data = null;
+      try { data = await res.json(); } catch (e) {}
+
+      if (!res.ok || !data || !data.livekit_url || !data.livekit_jwt) {
+        let msg = "Không thể lấy token kết nối.";
+        if (data && (data.message || data.error || data.detail)) msg = data.message || data.error || data.detail;
+        alert("Join room failed: " + msg);
+        resetCallUI();
+        return;
+      }
+
+      // create room
+      const room = new LivekitClient.Room();
+      currentRoom = room;
+
+      // room disconnected
+      room.on('disconnected', (reason) => {
+        console.log('[Room disconnected]', reason);
+        currentRoom = null;
+        resetCallUI();
+
+        if (reason === LivekitClient.DisconnectReason?.ROOM_DELETED) {
+          alert("Host ended the room.");
+        } else if (reason === LivekitClient.DisconnectReason?.DUPLICATE_IDENTITY) {
+          alert("You were disconnected because your identity is used elsewhere.");
+        } else if (reason === LivekitClient.DisconnectReason?.JOIN_FAILURE) {
+          alert("Cannot join this room. Please try again.");
+        }
+      });
+
+      room.on('participantConnected', (participant) => {
+        try { registerParticipantIdentity(participant); } catch (e) {}
+        try { if (shadowedSids && shadowedSids.has(participant.sid)) return; } catch (e) {}
+        const name = getDisplayName(participant);
+        ensureParticipantTile(participant.sid, name);
+        try { bindSpeakingIndicator(participant); } catch (e) {}
+        try { bindAudioIndicator(participant); } catch (e) {}
+        try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+        try { updateTopbarCount(); } catch (e) {}
+        // When a new participant joins, broadcast our mic state a few times (peer broadcast)
+        try { scheduleMicStateBurst('peer_join'); } catch (e) {}
+      });
+
+room.on('participantDisconnected', (participant) => {
+        try {
+          const key = sidToIdentityKey.get(participant.sid);
+          if (key && identityToActiveSid.get(key) === participant.sid) identityToActiveSid.delete(key);
+          sidToIdentityKey.delete(participant.sid);
+          shadowedSids.delete(participant.sid);
+        } catch (e) {}
+
+        // remove tile + cleanup
+        removeParticipantTile(participant.sid);
+
+        // remove any screen share
+        const item = screenShares.get(participant.sid);
+        if (item && item.el) { try { item.el.remove(); } catch (e) {} }
+        screenShares.delete(participant.sid);
+        if (activeScreenSid === participant.sid) activeScreenSid = null;
+        renderActiveScreen();
+
+        cleanupParticipantMediaElements(participant.sid);
+        try { updateTopbarCount(); } catch (e) {}
+      });
+
+
+      // --- Mic status indicator updates (best-effort across SDK versions)
+      try {
+        room.on('trackMuted', (...args) => {
+          const publication = args[0];
+          const participant = args[1] || args.find(a => a && a.sid);
+          try { if (participant && shadowedSids && shadowedSids.has(participant.sid)) return; } catch (e) {}
+          if (publication && isAudioPublication(publication)) {
+            try { bindAudioIndicator(participant); } catch (e) {}
+            try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+          }
+        });
+        room.on('trackUnmuted', (...args) => {
+          const publication = args[0];
+          const participant = args[1] || args.find(a => a && a.sid);
+          try { if (participant && shadowedSids && shadowedSids.has(participant.sid)) return; } catch (e) {}
+          if (publication && isAudioPublication(publication)) {
+            try { bindAudioIndicator(participant); } catch (e) {}
+            try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+          }
+        });
+        room.on('trackPublished', (...args) => {
+          const publication = args[0];
+          const participant = args[1] || args.find(a => a && a.sid);
+          try { if (participant && shadowedSids && shadowedSids.has(participant.sid)) return; } catch (e) {}
+          if (publication && isAudioPublication(publication)) {
+            try { bindAudioIndicator(participant); } catch (e) {}
+            try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+          }
+        });
+        room.on('trackUnpublished', (...args) => {
+          const publication = args[0];
+          const participant = args[1] || args.find(a => a && a.sid);
+          try { if (participant && shadowedSids && shadowedSids.has(participant.sid)) return; } catch (e) {}
+          if (publication && isAudioPublication(publication)) {
+            try { bindAudioIndicator(participant); } catch (e) {}
+            try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+          }
+        });
+      } catch (e) {}
+
+      function isScreenPublication(pub) {
+        try {
+          const s = (pub && pub.source != null) ? String(pub.source).toLowerCase() : '';
+          // livekit thường dùng: screen_share, screenshare, screenShare...
+          return s.includes('screen');
+        } catch (e) {
+          return false;
+        }
+      }
+
+      room.on('trackSubscribed', (track, publication, participant) => {
+        try { registerParticipantIdentity(participant); } catch (e) {}
+        try { if (participant && shadowedSids && shadowedSids.has(participant.sid)) return; } catch (e) {}
+        const name = getDisplayName(participant);
+        try { bindSpeakingIndicator(participant); } catch (e) {}
+
+        if (track.kind === 'video') {
+          const el = track.attach();
+          el.dataset.participant = participant.sid;
+
+          if (isScreenPublication(publication)) {
+            el.dataset.source = 'screen';
+            // IMPORTANT: user join sau đôi khi không có participantConnected + vòng lặp participants chạy quá sớm.
+            // Do đó, khi nhận screen-share track cũng phải đảm bảo tile participant tồn tại,
+            // để hiển thị "Camera off" (placeholder) nếu user đó đang không publish camera.
+            ensureParticipantTile(participant.sid, name);
+            // lưu và render vào pane trái
+            screenShares.set(participant.sid, { track, el, name, publication });
+            activeScreenSid = participant.sid; // ưu tiên cái mới nhất
+
+            // giảm băng thông: chỉ subscribe active screen
+            setOnlyActiveScreenSubscribed();
+
+            renderActiveScreen();
+          } else {
+            el.dataset.source = 'camera';
+            attachCameraVideoToTile(participant.sid, name, el, false);
+          }
+        } else if (track.kind === 'audio') {
+          const el = track.attach();
+          el.dataset.participant = participant.sid;
+          el.style.display = 'none';
+          document.body.appendChild(el);
+
+          // nếu loa đang tắt thì audio mới cũng phải tắt theo
+          el.muted = !speakerEnabled;
+
+          // update mic indicator state
+          try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+        }
+      });
+
+      room.on('trackUnsubscribed', (track, publication, participant) => {
+        if (!participant) return;
+
+        if (track.kind === 'video') {
+          // detach() trả về list elements
+          try {
+            const els = track.detach();
+            (els || []).forEach(e => { try { e.remove(); } catch (err) {} });
+          } catch (e) {}
+
+          if (isScreenPublication(publication)) {
+            // remove map
+            screenShares.delete(participant.sid);
+            if (activeScreenSid === participant.sid) activeScreenSid = null;
+            renderActiveScreen();
+          } else {
+            // remove camera from tile (giữ tile + name)
+            removeCameraFromTile(participant.sid);
+          }
+        } else if (track.kind === 'audio') {
+          try {
+            const els = track.detach();
+            (els || []).forEach(e => { try { e.remove(); } catch (err) {} });
+          } catch (e) {}
+          try { updateMicIndicatorFromParticipant(participant); } catch (e) {}
+        }
+      });
+
+      // chat + control data
+      room.on('dataReceived', async (payload, participant) => {
+        try {
+          const text = textDecoder.decode(payload);
+          const msgObj = safeParseJson(text);
+
+          
+
+          // --- Peer hello (new joiners) => existing peers broadcast mic state (by unique id, not name)
+          if (msgObj && msgObj.type === 'peer_hello') {
+            const fromSid = String((participant && participant.sid) || msgObj.sid || '').trim();
+            try { if (fromSid && currentRoom && currentRoom.localParticipant && fromSid === currentRoom.localParticipant.sid) return; } catch (e) {}
+            try { scheduleMicStateBurst('peer_hello'); } catch (e) {}
+            return;
+          }
+// --- Mic state sync (peer broadcast)
+          if (msgObj && msgObj.type === 'mic_state_req') {
+            const fromSid = String(msgObj.from_sid || msgObj.from || (participant && participant.sid) || '').trim();
+            try { if (fromSid && currentRoom && currentRoom.localParticipant && fromSid === currentRoom.localParticipant.sid) return; } catch (e) {}
+
+            // Reply with our current snapshot (burst to cover warmup timing)
+            try { scheduleMicStateBurst('mic_state_req'); } catch (e) {}
+            try { await broadcastMicStateNow({ cause: 'mic_state_req_reply' }); } catch (e) {}
+            return;
+          }
+
+if (msgObj && msgObj.type === 'mic_state') {
+            try { if (participant) { try { registerParticipantIdentity(participant); } catch (e) {} } } catch (e) {}
+
+            // Basic validation: if SDK gives us sender participant, ignore spoofed sid in payload
+            try { if (participant && msgObj.sid && String(msgObj.sid) !== String(participant.sid)) return; } catch (e) {}
+
+            const senderSid = String((msgObj.sid) || (participant && participant.sid) || '').trim();
+            if (!senderSid) return;
+
+            const key = String(msgObj.key || msgObj.id || (participant && (participant.identity || participant.sid)) || '').trim();
+            const enabled = !!msgObj.enabled;
+            const ts = Number(msgObj.ts || Date.now());
+
+            // Cache by identityKey
+            if (key) {
+              const prev = micBroadcastByKey.get(key);
+              if (!prev || ts >= Number(prev.ts || 0)) {
+                micBroadcastByKey.set(key, { enabled, ts, sid: senderSid });
+              }
+
+              // Keep id<->sid mapping consistent (id-based, NOT display name)
+              try { if (!sidToIdentityKey.get(senderSid)) sidToIdentityKey.set(senderSid, key); } catch (e) {}
+              try { if (!identityToActiveSid.get(key)) identityToActiveSid.set(key, senderSid); } catch (e) {}
+            }
+
+            // Ensure tile exists, then apply directly by SID (works even if 'participant' param is missing)
+            try {
+              const nm = participantNames.get(senderSid) || (participant ? getDisplayName(participant) : 'Peer');
+              ensureParticipantTile(senderSid, nm);
+            } catch (e) {}
+
+            try { applyMicState(senderSid, !enabled, 2); } catch (e) {}
+            return;
+          }
+
+          // --- Control: single active screen sharer
+          if (msgObj && msgObj.type === 'screen_share_claim') {
+            // If someone else starts sharing, the previous sharer should stop (cooperative).
+            const fromSid = (participant && participant.sid) || msgObj.sid;
+            if (currentRoom && fromSid && fromSid !== currentRoom.localParticipant.sid) {
+              const otherTs = Number(msgObj.ts || 0);
+              const myTs = Number(myScreenShareStartedAt || 0);
+              const iAmSharingOrStarting = !!(screenShareEnabled || startingScreenShare);
+
+              if (iAmSharingOrStarting) {
+                // Rule: newer claim wins. If equal timestamp, tie-breaker by sid.
+                const shouldYield =
+                  (!myTs) ||
+                  (otherTs > myTs) ||
+                  (otherTs === myTs && String(fromSid) > String(currentRoom.localParticipant.sid));
+
+                if (shouldYield) {
+                  await stopScreenShareInternal();
+                }
+              }
+            }
+            return;
+          }
+
+          if (msgObj && msgObj.type === 'screen_share_release') {
+            // nothing to do; track events will update UI
+            return;
+          }
+
+          // --- Chat
+          if (msgObj && msgObj.type === 'chat') {
+            const senderName = msgObj.sender || (participant && participant.identity) || 'Peer';
+            appendChatMessage(senderName, msgObj.text || '', false);
+          } else {
+            const senderName = (participant && participant.identity) || 'Peer';
+            appendChatMessage(senderName, text, false);
+          }
+        } catch (e) {
+          console.error('Decode data failed:', e);
+        }
+      });
+
+
+      // active speakers (border highlight)
+      room.on('activeSpeakersChanged', (speakers) => {
+        try { updateSpeakingFromActiveSpeakers(speakers); } catch (e) {}
+      });
+
+      // connect
+      await room.connect(data.livekit_url, data.livekit_jwt);
+
+      // Topbar
+      try { setTopbarStatus(true, roomId); updateTopbarCount(); } catch (e) {}
+      // Peer broadcast mic state so new joiners see correct mute UI (unique id; no name collision)
+      try { schedulePeerHelloBurst(); } catch (e) {}
+      try { scheduleMicRequestBurst(); } catch (e) {}
+      try { scheduleMicStateBurst('joined'); } catch (e) {}
+      try { startParticipantPruneLoop(); } catch (e) {}
+// IMPORTANT: LiveKit thường KHÔNG bắn participantConnected cho những người đã có sẵn trong room.
+      // Vì vậy phải tạo tile cho toàn bộ participants hiện hữu ngay sau khi connect,
+      // kể cả user đang share screen và đã tắt/unpublish camera.
+      try {
+        for (const p of getRemoteParticipantsList(room)) {
+          try { registerParticipantIdentity(p); } catch (e) {}
+          try { if (shadowedSids && shadowedSids.has(p.sid)) continue; } catch (e) {}
+          const name = getDisplayName(p);
+          ensureParticipantTile(p.sid, name);
+          try { bindSpeakingIndicator(p); } catch (e) {}
+          try { bindAudioIndicator(p); } catch (e) {}
+          try { updateMicIndicatorFromParticipant(p); } catch (e) {}
+        }
+      } catch (e) {}
+      try { updateSpeakingFromActiveSpeakers(room.activeSpeakers || []); } catch (e) {}
+
+      // tạo tile local ngay
+      ensureParticipantTile(room.localParticipant.sid, CHAT_USERNAME || room.localParticipant.identity || 'You');
+      try { bindSpeakingIndicator(room.localParticipant); } catch (e) {}
+      try { bindAudioIndicator(room.localParticipant); } catch (e) {}
+      try { updateMicIndicatorFromParticipant(room.localParticipant); } catch (e) {}
+
+      
+      // Mobile browsers (đặc biệt iOS Safari) đôi khi populate track publications trễ.
+      // Do a small, bounded re-sync (anti-flap logic keeps UI stable).
+      [350, 900, 1700].forEach((ms) => {
+        setTimeout(() => {
+          try {
+            for (const p of getRemoteParticipantsList(room)) {
+              try { if (shadowedSids && shadowedSids.has(p.sid)) continue; } catch (e) {}
+              try { updateMicIndicatorFromParticipant(p); } catch (e) {}
+            }
+            try { updateMicIndicatorFromParticipant(room.localParticipant); } catch (e) {}
+          } catch (e) {}
+        }, ms);
+      });
+
+// publish local audio + video
+      let localTracks = [];
+      try {
+        localTracks = await LivekitClient.createLocalTracks({
+          audio: true,
+          video: { facingMode: cameraFacingMode },
+        });
+      } catch (e) {
+        console.warn("createLocalTracks(audio+video) failed, fallback audio-only:", e);
+        try {
+          localTracks = await LivekitClient.createLocalTracks({ audio: true, video: false });
+        } catch (e2) {
+          console.error("createLocalTracks(audio) failed:", e2);
+          localTracks = [];
+        }
+      }
+
+      // track presence flags
+      localHasAudio = (localTracks || []).some(t => t && t.kind === 'audio');
+
+      for (const track of localTracks) {
+        await room.localParticipant.publishTrack(track);
+
+        if (track.kind === 'video') {
+          const el = track.attach();
+          el.dataset.participant = room.localParticipant.sid;
+          el.dataset.source = 'camera';
+
+          localVideoTrack = track;
+          localVideoElement = el;
+
+          attachCameraVideoToTile(room.localParticipant.sid, CHAT_USERNAME || room.localParticipant.identity || 'You', el, true);
+        }
+        // local audio: không attach
+      }
+
+
+      // ensure local mic indicator reflects current state
+      try { updateMicIndicator(room.localParticipant.sid, (!localHasAudio) || (!micEnabled)); } catch (e) {}
+
+      // state cameraEnabled dựa vào có localVideoTrack hay không
+      cameraEnabled = !!localVideoTrack;
+      updateCameraUI();
+
+      // enable UI
+      document.getElementById("endBtn").disabled = false;
+      const sendBtn = document.getElementById("sendChatBtn");
+      if (sendBtn) sendBtn.disabled = false;
+
+      if (toggleCameraBtn) toggleCameraBtn.disabled = false;
+      if (switchCameraBtn) switchCameraBtn.disabled = false;
+      if (toggleMicBtn) toggleMicBtn.disabled = false;
+      if (toggleScreenBtn) toggleScreenBtn.disabled = false;
+      if (toggleSpeakerBtn) toggleSpeakerBtn.disabled = false;
+
+      micEnabled = true;
+      updateMicUI();
+      try { setTimeout(() => { try { broadcastMicStateNow({ cause: 'join' }); } catch (e) {} }, 120); } catch (e) {}
+
+      speakerEnabled = true;
+      if (toggleSpeakerIcon) toggleSpeakerIcon.textContent = 'volume_up';
+      if (toggleSpeakerBtn) toggleSpeakerBtn.title = 'Mute call audio';
+      applySpeakerMuteToCallMedia();
+
+      screenShareEnabled = false;
+      updateScreenUI();
+
+      console.log("Connected to room:", room.name);
+    } catch (err) {
+      console.error("Join failed:", err);
+    }
+  };
+
+  // Send chat
+  document.getElementById("sendChatBtn").onclick = async () => {
+    const input = document.getElementById("chatInput");
+    if (!input) return;
+
+    const text = input.value.trim();
+    if (!text) return;
+
+    if (!currentRoom) {
+      alert("You are not connected to a room.");
+      return;
+    }
+
+    try {
+      const payloadObj = { type: 'chat', text, sender: CHAT_USERNAME || 'User', ts: Date.now() };
+      const encoded = textEncoder.encode(JSON.stringify(payloadObj));
+      await currentRoom.localParticipant.publishData(encoded, { reliable: true });
+
+      appendChatMessage('You', text, true);
+      input.value = '';
+    } catch (e) {
+      console.error('Send chat error:', e);
+    }
+  };
+
+  // Toggle camera
+  if (toggleCameraBtn) {
+    toggleCameraBtn.onclick = async () => {
+      if (!currentRoom) return;
+      // nếu đang screen share thì khoá
+      if (screenShareEnabled) return;
+      await toggleLocalCamera();
+    };
+  }
+
+  // Switch camera front/back
+  if (switchCameraBtn) {
+    switchCameraBtn.onclick = async () => {
+      // Đảo hướng: trước <-> sau
+      cameraFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+
+      try {
+        // nếu đang có track thì restart để đổi cam; nếu không, chỉ lưu mode (khi bật cam lại sẽ dùng)
+        if (localVideoTrack && typeof localVideoTrack.restartTrack === 'function') {
+          await localVideoTrack.restartTrack({ facingMode: cameraFacingMode });
+
+          // cập nhật mirror local
+          if (localVideoElement) {
+            if (cameraFacingMode === 'user') localVideoElement.classList.add('mirror-video');
+            else localVideoElement.classList.remove('mirror-video');
+          }
+        }
+        console.log('Switched camera to', cameraFacingMode);
+      } catch (e) {
+        console.error('Switch camera failed:', e);
+      }
+    };
+  }
+
+  // Toggle mic
+  if (toggleMicBtn) {
+    toggleMicBtn.onclick = async () => {
+      if (!currentRoom) return;
+      try {
+        micEnabled = !micEnabled;
+        await currentRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+        updateMicUI();
+        try { broadcastMicStateNow({ cause: 'toggle' }); } catch (e) {}
+      } catch (e) {
+        console.error("Toggle mic error:", e);
+      }
+    };
+  }
+
+  // Toggle speaker (call audio)
+  if (toggleSpeakerBtn) {
+    toggleSpeakerBtn.onclick = () => {
+      if (!currentRoom) return;
+
+      speakerEnabled = !speakerEnabled;
+      applySpeakerMuteToCallMedia();
+
+      if (toggleSpeakerIcon) toggleSpeakerIcon.textContent = speakerEnabled ? 'volume_up' : 'volume_off';
+      toggleSpeakerBtn.title = speakerEnabled ? 'Mute call audio' : 'Unmute call audio';
+    };
+  }
+
+  // Toggle screen share
+  if (toggleScreenBtn) {
+    toggleScreenBtn.onclick = async () => {
+      if (!currentRoom) return;
+
+      // Stop
+      if (screenShareEnabled) {
+        await stopScreenShareInternal();
+        return;
+      }
+
+      // Start
+      try {
+        const startedAt = Date.now();
+        myScreenShareStartedAt = startedAt;
+        startingScreenShare = true;
+
+        // tắt cam local để giảm băng thông
+        cameraPrevEnabledBeforeScreen = cameraEnabled;
+        cameraDisabledByScreenShare = false;
+
+        if (cameraEnabled) {
+          cameraDisabledByScreenShare = true;
+          await disableLocalCamera();
+        }
+
+        // khoá nút camera trong lúc share
+        if (toggleCameraBtn) toggleCameraBtn.disabled = true;
+
+        const tracks = await LivekitClient.createLocalScreenTracks({
+          audio: true,
+          video: true
+        });
+
+        localScreenTracks = tracks;
+
+        for (const t of tracks) {
+          await currentRoom.localParticipant.publishTrack(t);
+
+          if (t.kind === 'video') {
+            const el = t.attach();
+            el.dataset.participant = currentRoom.localParticipant.sid;
+            el.dataset.source = 'screen';
+
+            const name = CHAT_USERNAME || currentRoom.localParticipant.identity || 'You';
+            screenShares.set(currentRoom.localParticipant.sid, { track: t, el, name, publication: null });
+            activeScreenSid = currentRoom.localParticipant.sid;
+
+            // giảm băng thông: chỉ subscribe active screen
+            setOnlyActiveScreenSubscribed();
+
+            renderActiveScreen();
+
+            // Nếu user bấm "Stop sharing" ở UI browser → tự dừng
+            try {
+              if (t.mediaStreamTrack) {
+                t.mediaStreamTrack.onended = () => {
+                  if (screenShareEnabled) stopScreenShareInternal();
+                };
+              }
+            } catch (e) {}
+          }
+          // local screen audio: không attach để tránh tự nghe lại
+        }
+
+        screenShareEnabled = true;
+        startingScreenShare = false;
+        updateScreenUI();
+
+        // claim quyền share (single active sharer)
+        try { await broadcastScreenShareClaim(startedAt); } catch (e) {}
+
+      } catch (e) {
+        console.warn('Start screen share failed:', e);
+
+        startingScreenShare = false;
+        myScreenShareStartedAt = null;
+
+        // mở lại nút camera, restore cam nếu cần
+        screenShareEnabled = false;
+        updateScreenUI();
+
+        try {
+          if (toggleCameraBtn) toggleCameraBtn.disabled = false;
+          if (cameraDisabledByScreenShare && cameraPrevEnabledBeforeScreen) {
+            await enableLocalCamera();
+          }
+        } catch (err) {}
+
+        cameraDisabledByScreenShare = false;
+        cameraPrevEnabledBeforeScreen = null;
+      }
+    };
+  }
+
+  // End call
+  document.getElementById("endBtn").onclick = async () => {
+    const roomId = document.getElementById("roomId").value.trim();
+    if (!roomId) { alert("Missing room id"); return; }
+
+    try {
+      const res = await fetch("https://app.shieldrtc.com/api/rooms/end", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + SIGNAL_JWT,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ room_id: roomId })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.warn("End room failed:", err);
+        alert(err.error || "Only host can end this room (or server error).");
+      }
+    } catch (e) {
+      console.error("End room error:", e);
+    }
+
+    // stop local screen share resources (cleanup nhanh)
+    try { await stopScreenShareInternal(); } catch (e) {}
+
+    // disconnect local
+    try { stopParticipantPruneLoop(); } catch (e) {}
+    if (currentRoom) {
+      try { await currentRoom.disconnect(); } catch (e) {}
+      currentRoom = null;
+    }
+
+    resetCallUI();
+  };
+});
+</script>
+
+</body>
+</html>
