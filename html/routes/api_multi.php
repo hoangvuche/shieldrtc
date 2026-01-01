@@ -1,5 +1,7 @@
 <?php
 
+require_once webroot_fs_path('/../app/Helpers/common_functions.php');
+
 use App\Controllers\BaseController;
 use App\Services\AuthService;
 use App\Helpers\ResponseHelper;
@@ -207,36 +209,114 @@ switch ($path) {
         break;
 
     case '/api/rooms/end':
-        // ... lấy $signalJwt như cũ
+        $auth = new AuthService();
+
+        // --- Auth (optional nhưng nên có)
+        $headers = function_exists('getallheaders') ? getallheaders() : [];
+        $authHeader = $headers['Authorization']
+            ?? ($headers['authorization'] ?? ($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
+
+        if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $m)) {
+            error_log("Error not found auth header");
+            http_response_code(401);
+            ResponseHelper::json(['error' => 'Missing or invalid Authorization header']);
+            break;
+        }
+        $signalJwt = $m[1];
+
         try {
             $jwtSecret = $_ENV['JWT_SECRET'] ?? 'changeme';
             $decoded = \Firebase\JWT\JWT::decode(
-                $signalJwt, 
+                $signalJwt,
                 new \Firebase\JWT\Key($jwtSecret, 'HS256')
             );
-            $userId = $decoded->user_id ?? null;
-            if (!$userId) throw new \Exception("Invalid JWT");
 
+            $userId = $decoded->user_id ?? null;
+            if (!$userId) {
+                throw new \Exception('Invalid JWT');
+            }
+
+            // body chỉ để audit
             $body = json_decode(file_get_contents('php://input'), true) ?? [];
             $roomId = $body['room_id'] ?? null;
-            if (!$roomId) throw new \Exception("Missing room_id");
 
-            // ⚠️ Kiểm tra quyền sở hữu phòng
-            $room = RoomsRepo::getRoomById($roomId); 
+            // (optional) log việc user rời phòng
+            // RoomsRepo::logLeave($roomId, $userId);
+
+            ResponseHelper::json([
+                'status'  => 'left_room',
+                'room_id' => $roomId,
+                'user_id' => $userId,
+                'at'      => date('c'),
+            ]);
+
+        } catch (\Throwable $e) {
+            logError('rooms.end', $e, [
+                'user_id' => $userId ?? null,
+                'room_id' => $roomId ?? null,
+            ]);
+
+            http_response_code(403);
+            ResponseHelper::json([
+                'error'   => 'End room failed',
+                'message' => $e->getMessage(),
+            ]);
+        }
+        break;
+
+    case '/api/rooms/disband':
+        $auth = new AuthService();
+
+        // --- Lấy Authorization header (giống các nhánh khác)
+        $headers = function_exists('getallheaders') ? getallheaders() : [];
+        $authHeader = $headers['Authorization']
+            ?? ($headers['authorization'] ?? ($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
+
+        if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $m)) {
+            http_response_code(401);
+            ResponseHelper::json(['error' => 'Missing or invalid Authorization header']);
+            break;
+        }
+        $signalJwt = $m[1];
+
+        try {
+            // --- Decode Signal JWT
+            $jwtSecret = $_ENV['JWT_SECRET'] ?? 'changeme';
+            $decoded = \Firebase\JWT\JWT::decode(
+                $signalJwt,
+                new \Firebase\JWT\Key($jwtSecret, 'HS256')
+            );
+
+            $userId = $decoded->user_id ?? null;
+            if (!$userId) {
+                throw new \Exception('Invalid JWT: missing user_id');
+            }
+
+            // --- Input
+            $body = json_decode(file_get_contents('php://input'), true) ?? [];
+            $roomId = $body['room_id'] ?? null;
+            if (!$roomId) {
+                throw new \Exception('Missing room_id');
+            }
+
+            // --- Kiểm tra quyền HOST / OWNER
+            $room = RoomsRepo::getRoomById($roomId);
             if (!$room) {
                 http_response_code(404);
                 ResponseHelper::json(['error' => 'Room not found']);
                 break;
             }
-            if ($room['owner_id'] != $userId) {
+
+            if ((int)$room['owner_id'] !== (int)$userId) {
                 http_response_code(403);
-                ResponseHelper::json(['error' => 'Only room owner can end this room']);
+                ResponseHelper::json(['error' => 'Only room owner can disband this room']);
                 break;
             }
 
-            // ✅ Tới đây mới gọi LiveKit DeleteRoom
+            // --- Gọi LiveKit DeleteRoom (hard destroy)
             $serverJwt = $auth->generateServerApiToken(60);
-            $deleteUrl = $_ENV['LIVEKIT_HTTP_URL'] . '/twirp/livekit.RoomService/DeleteRoom';
+            $deleteUrl = rtrim($_ENV['LIVEKIT_HTTP_URL'], '/')
+                . '/twirp/livekit.RoomService/DeleteRoom';
 
             $ch = curl_init($deleteUrl);
             curl_setopt_array($ch, [
@@ -248,19 +328,35 @@ switch ($path) {
                 CURLOPT_POSTFIELDS     => json_encode(['room' => $roomId]),
                 CURLOPT_RETURNTRANSFER => true,
             ]);
+
             $resp = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
             if ($httpCode >= 200 && $httpCode < 300) {
-                ResponseHelper::json(['status' => 'room_closed', 'room_id' => $roomId]);
+                // (Tuỳ chọn) đánh dấu room đã bị disband trong DB
+                // RoomsRepo::markDisbanded($roomId, $userId);
+
+                ResponseHelper::json([
+                    'status'   => 'room_disbanded',
+                    'room_id'  => $roomId,
+                    'by_user'  => $userId,
+                    'datetime' => date('c'),
+                ]);
             } else {
                 http_response_code(500);
-                ResponseHelper::json(['error' => 'LiveKit DeleteRoom failed', 'detail' => $resp]);
+                ResponseHelper::json([
+                    'error'  => 'LiveKit DeleteRoom failed',
+                    'detail' => $resp,
+                ]);
             }
+
         } catch (\Throwable $e) {
             http_response_code(403);
-            ResponseHelper::json(['error' => 'End room failed', 'message' => $e->getMessage()]);
+            ResponseHelper::json([
+                'error'   => 'Disband room failed',
+                'message' => $e->getMessage(),
+            ]);
         }
         break;
 
