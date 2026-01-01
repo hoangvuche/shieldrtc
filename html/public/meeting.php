@@ -18,7 +18,7 @@ include_once webroot_fs_path('/../app/Services/rateLimiter.php');
   <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=block" />
   <link rel="stylesheet" type="text/css" href="<?=asset("assets/css/meeting.css")?>">
-  <script src="<?=asset("assets/js/meeting_v2.js")?>"></script>
+  <script src="<?=asset("assets/js/meeting_v2.2.js")?>"></script>
 </head>
 <body class="app">
 <div class="bg-grid" aria-hidden="true"></div>
