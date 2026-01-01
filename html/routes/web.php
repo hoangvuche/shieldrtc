@@ -1,2 +1,2 @@
 <?php
-echo "ShieldRTC Portal - Web route placeholder";
+header('Location: meeting');

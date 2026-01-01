@@ -1,3 +1,12 @@
+<?php 
+session_start();
+
+$_SESSION['module'] = 'meeting';
+
+require_once __DIR__ . '/../app/Bootstrap/mybootstrap.php';
+include_once webroot_fs_path('/../app/Services/rateLimiter.php');
+?>
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -8,9 +17,8 @@
   <link rel="shortcut icon" type=“image/x-icon” href="assets/images/favicon.png">
   <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=block" />
-  <link rel="stylesheet" type="text/css" href="assets/css/meeting.css?v=<?=filemtime('assets/css/meeting.css')?>">
-  <script src="assets/js/meeting.js?v=<?=filemtime('assets/js/meeting.js')?>"></script>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="<?=asset("assets/css/meeting.css")?>">
+  <script src="<?=asset("assets/js/meeting_v2.js")?>"></script>
 </head>
 <body class="app">
 <div class="bg-grid" aria-hidden="true"></div>
