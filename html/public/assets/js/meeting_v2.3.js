@@ -942,8 +942,7 @@ function enterStageFullscreen(){
           const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
           const w = Math.max(minScreen, Math.min(max, max));
           screenPaneEl.style.flexBasis = `${w}px`;
-          try { localStorage.setItem('screenPaneBasisPx', String(w)); } catch (e) {}
-        }
+}
       }catch(e){}
       try{ window.dispatchEvent(new Event('resize')); }catch(e){}
     });
@@ -1490,104 +1489,99 @@ window.addEventListener('resize', () => {
   try { updateVideoTilesLayout(); } catch (e) {}
 }, { passive: true });
 function setStageScreenVisible(visible) {
-  if (!screenPaneEl || !splitterEl) return;
+    if (!screenPaneEl || !splitterEl) return;
 
-  if (visible) {
-    screenPaneEl.classList.remove('is-hidden');
-    splitterEl.classList.remove('is-hidden');
+    if (visible) {
+      screenPaneEl.classList.remove('is-hidden');
+      splitterEl.classList.remove('is-hidden');
 
-    // ✅ Lần đầu bật screenshare: ép users pane về min
-    // Nhưng nếu user đã kéo splitter (có saved basis) thì giữ.
-    try {
-      const alreadyInit = screenPaneEl.dataset.ssInitDone === '1';
-      if (!alreadyInit) {
-        const hasInlineBasis =
-          !!(screenPaneEl.style.flexBasis && String(screenPaneEl.style.flexBasis).trim());
+      // ✅ First time screen-share pane becomes visible in this "share session":
+      // default to "users list = min" (screen pane = max),
+      // BUT if user has ever dragged splitter (saved basis exists) then keep that.
+      try {
+        const alreadyInit = screenPaneEl.dataset.ssInitDone === '1';
+        if (!alreadyInit) {
+          let savedBasis = 0;
+          try { savedBasis = Number(localStorage.getItem('screenPaneBasisPx') || '') || 0; } catch (e) {}
 
-        let savedBasis = 0;
-        try {
-          savedBasis = Number(localStorage.getItem('screenPaneBasisPx') || '') || 0;
-        } catch (e) {}
-
-        if (!hasInlineBasis && !savedBasis) {
-          // Chưa có user preference -> auto "users min" (screen max)
           if (stageEl && screenPaneEl) {
             const rect = stageEl.getBoundingClientRect();
-            const minScreen = getScreenMinPx();
-            const minUsers  = getUsersMinPx();
-            const splitW = splitterEl ? (splitterEl.getBoundingClientRect().width || 8) : 8;
-            const chatW  = (chatPaneEl && !chatPaneEl.classList.contains('is-hidden')) ? getChatWidthPx() : 0;
+            const dir  = getComputedStyle(stageEl).flexDirection;
 
-            const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
-            screenPaneEl.style.flexBasis = `${max}px`;
+            if (dir === 'column') {
+              // vertical split (mobile)
+              let savedY = 0;
+              try { savedY = Number(localStorage.getItem('screenPaneBasisPxY') || '') || 0; } catch (e) {}
 
-            // ❗ Không ghi localStorage ở đây để khỏi "dính" layout về sau
+              const min = 220;
+              const max = Math.max(min, rect.height - 220);
+
+              // If user dragged before, restore; otherwise default to "screen max"
+              const h = savedY ? clamp(savedY, min, max) : clamp(max, min, max);
+              screenPaneEl.style.flexBasis = `${h}px`;
+            } else {
+              const minScreen = getScreenMinPx();
+              const minUsers  = getUsersMinPx();
+              const splitW = splitterEl ? (splitterEl.getBoundingClientRect().width || 8) : 8;
+              const chatW  = (chatPaneEl && !chatPaneEl.classList.contains('is-hidden')) ? getChatWidthPx() : 0;
+              const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
+
+              // If user dragged before, restore; otherwise default to max (users min)
+              const w = savedBasis ? clamp(savedBasis, minScreen, max) : clamp(max, minScreen, max);
+              screenPaneEl.style.flexBasis = `${w}px`;
+            }
           }
-        } else if (!hasInlineBasis && savedBasis) {
-          // Có user preference -> restore (clamp) để giữ UX ổn
-          if (stageEl && screenPaneEl) {
-            const rect = stageEl.getBoundingClientRect();
-            const minScreen = getScreenMinPx();
-            const minUsers  = getUsersMinPx();
-            const splitW = splitterEl ? (splitterEl.getBoundingClientRect().width || 8) : 8;
-            const chatW  = (chatPaneEl && !chatPaneEl.classList.contains('is-hidden')) ? getChatWidthPx() : 0;
 
-            const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
-            const basis = clamp(savedBasis, minScreen, max);
-            screenPaneEl.style.flexBasis = `${basis}px`;
-          }
+          // Don't persist here: only persist on actual splitter drag.
+          screenPaneEl.dataset.ssInitDone = '1';
         }
-        // nếu hasInlineBasis = true -> user vừa kéo trong session này -> giữ nguyên
+      } catch (e) {}
 
-        screenPaneEl.dataset.ssInitDone = '1';
-      }
-    } catch (e) {}
+      try { updateVideoTilesLayout(); } catch (e) {}
+
+      // zoom buttons only make sense when we have a screen
+      if (zoomInBtn)  zoomInBtn.classList.remove('is-hidden');
+      if (zoomOutBtn) zoomOutBtn.classList.remove('is-hidden');
+
+      return;
+    }
+
+    // No active screen share: hide the entire screen-share pane (and splitter)
+    screenPaneEl.classList.add('is-hidden');
+    splitterEl.classList.add('is-hidden');
+
+    // reset "first show" flag for next time
+    try { delete screenPaneEl.dataset.ssInitDone; } catch (e) {}
 
     try { updateVideoTilesLayout(); } catch (e) {}
 
-    // zoom buttons only make sense when we have a screen
-    if (zoomInBtn)  zoomInBtn.classList.remove('is-hidden');
-    if (zoomOutBtn) zoomOutBtn.classList.remove('is-hidden');
+    // hide zoom buttons
+    if (zoomInBtn)  zoomInBtn.classList.add('is-hidden');
+    if (zoomOutBtn) zoomOutBtn.classList.add('is-hidden');
 
-    return;
-  }
+    // clear screen tile + reset zoom/pan
+    try {
+      const media = screenTileEl.querySelector('.media');
+      if (media) media.innerHTML = '';
+    } catch (e) {}
+    activeScreenSid = null;
+    lastRenderedScreenSid = null;
+    screenZoom = 1;
+    panX = 0; panY = 0;
+    updateZoomButtons();
+    updatePannableUI();
+    try { screenTileEl.classList.remove('is-speaking'); } catch (e) {}
 
-  // No active screen share: hide the entire screen-share pane (and splitter)
-  screenPaneEl.classList.add('is-hidden');
-  splitterEl.classList.add('is-hidden');
-
-  // reset "first show" flag for next time
-  try { delete screenPaneEl.dataset.ssInitDone; } catch (e) {}
-
-  try { updateVideoTilesLayout(); } catch (e) {}
-
-  // hide zoom buttons
-  if (zoomInBtn)  zoomInBtn.classList.add('is-hidden');
-  if (zoomOutBtn) zoomOutBtn.classList.add('is-hidden');
-
-  // clear screen tile + reset zoom/pan
-  try {
-    const media = screenTileEl.querySelector('.media');
-    if (media) media.innerHTML = '';
-  } catch (e) {}
-  activeScreenSid = null;
-  lastRenderedScreenSid = null;
-  screenZoom = 1;
-  panX = 0; panY = 0;
-  updateZoomButtons();
-  updatePannableUI();
-  try { screenTileEl.classList.remove('is-speaking'); } catch (e) {}
-
-  // keep placeholder ready for next share (not visible while pane is hidden)
-  try {
-    if (screenSlotEl) {
-      if (!screenSlotEl.contains(screenPlaceholderEl)) {
-        screenSlotEl.innerHTML = '';
-        screenSlotEl.appendChild(screenPlaceholderEl);
+    // keep placeholder ready for next share (not visible while pane is hidden)
+    try{
+      if (screenSlotEl) {
+        if (!screenSlotEl.contains(screenPlaceholderEl)) {
+          screenSlotEl.innerHTML = '';
+          screenSlotEl.appendChild(screenPlaceholderEl);
+        }
       }
-    }
-  } catch (e) {}
-}
+    }catch(e){}
+  }
 
   function pickNewestScreenSid() {
     let last = null;
@@ -1969,6 +1963,9 @@ function ensureParticipantTile(sid, name) {
     let dragging = false;
     let axis = 'x';
 
+    let lastBasisX = null;
+    let lastBasisY = null;
+
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
     splitterEl.addEventListener('pointerdown', (e) => {
@@ -1995,18 +1992,29 @@ function ensureParticipantTile(sid, name) {
         const max = Math.max(minScreen, rect.width - minUsers - chatW - splitW);
         const w = clamp(x, minScreen, max);
         screenPaneEl.style.flexBasis = `${w}px`;
-        try { localStorage.setItem('screenPaneBasisPx', String(w)); } catch (e) {}
+        lastBasisX = w;
       } else {
         const y = e.clientY - rect.top;
         const min = 220;
         const max = rect.height - 220;
         const h = clamp(y, min, max);
         screenPaneEl.style.flexBasis = `${h}px`;
-        try { localStorage.setItem('screenPaneBasisPxY', String(h)); } catch (e) {}
+        lastBasisY = h;
       }
     });
 
-    const endDrag = () => { dragging = false; };
+    const endDrag = () => {
+      dragging = false;
+      try {
+        if (axis === 'x' && lastBasisX != null) {
+          localStorage.setItem('screenPaneBasisPx', String(lastBasisX));
+        } else if (axis === 'y' && lastBasisY != null) {
+          localStorage.setItem('screenPaneBasisPxY', String(lastBasisY));
+        }
+      } catch (e) {}
+      lastBasisX = null;
+      lastBasisY = null;
+    };
     splitterEl.addEventListener('pointerup', endDrag);
     splitterEl.addEventListener('pointercancel', endDrag);
 
