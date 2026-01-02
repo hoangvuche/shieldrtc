@@ -293,6 +293,21 @@ button:disabled{ opacity: 0.55; cursor: not-allowed; }
 .btn-danger:hover{ background: rgba(239,68,68,0.18); }
 .btn-danger:focus-visible{ box-shadow: 0 0 0 4px rgba(239,68,68,0.20); outline: none; }
 
+.btn-danger--outline{
+  background: transparent;
+  border-color: rgba(239,68,68,0.28);
+  color: rgba(239,68,68,0.92);
+}
+
+.btn-danger--outline:hover{
+  background: rgba(239,68,68,0.12);
+}
+
+.btn-danger--outline:focus-visible{
+  box-shadow: 0 0 0 4px rgba(239,68,68,0.18);
+  outline: none;
+}
+
 .btn-with-icon{
   display: inline-flex;
   align-items: center;
@@ -856,10 +871,6 @@ body.is-stage-fullscreen .stageHead{ display: none; }
   padding: 12px;
   border-top: 1px solid rgba(255,255,255,0.08);
   background: rgba(0,0,0,0.14);
-}
-
-.stageControlsWrap .controlDock{
-  /* handled by grid layout in .stageControlDock */
 }
 
 /* Side controls panel is now moved into the stage */

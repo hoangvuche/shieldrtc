@@ -224,44 +224,41 @@ switch ($path) {
         }
         $signalJwt = $m[1];
 
-        try {
-            $jwtSecret = $_ENV['JWT_SECRET'] ?? 'changeme';
-            $decoded = \Firebase\JWT\JWT::decode(
-                $signalJwt,
-                new \Firebase\JWT\Key($jwtSecret, 'HS256')
-            );
+    try {
+        $jwtSecret = $_ENV['JWT_SECRET'] ?? 'changeme';
+        $decoded = \Firebase\JWT\JWT::decode(
+            $signalJwt,
+            new \Firebase\JWT\Key($jwtSecret, 'HS256')
+        );
 
-            $userId = $decoded->user_id ?? null;
-            if (!$userId) {
-                throw new \Exception('Invalid JWT');
-            }
-
-            // body chỉ để audit
-            $body = json_decode(file_get_contents('php://input'), true) ?? [];
-            $roomId = $body['room_id'] ?? null;
-
-            // (optional) log việc user rời phòng
-            // RoomsRepo::logLeave($roomId, $userId);
-
-            ResponseHelper::json([
-                'status'  => 'left_room',
-                'room_id' => $roomId,
-                'user_id' => $userId,
-                'at'      => date('c'),
-            ]);
-
-        } catch (\Throwable $e) {
-            logError('rooms.end', $e, [
-                'user_id' => $userId ?? null,
-                'room_id' => $roomId ?? null,
-            ]);
-
-            http_response_code(403);
-            ResponseHelper::json([
-                'error'   => 'End room failed',
-                'message' => $e->getMessage(),
-            ]);
+        $userId = $decoded->user_id ?? null;
+        if (!$userId) {
+            throw new \Exception('Invalid JWT');
         }
+
+        // body chỉ để audit
+        $body = json_decode(file_get_contents('php://input'), true) ?? [];
+        $roomId = $body['room_id'] ?? null;
+
+        ResponseHelper::json([
+            'status'  => 'left_room',
+            'room_id' => $roomId,
+            'user_id' => $userId,
+            'at'      => date('c'),
+        ]);
+
+    } catch (\Throwable $e) {
+        logError('rooms.end', $e, [
+            'user_id' => $userId ?? null,
+            'room_id' => $roomId ?? null,
+        ]);
+
+        http_response_code(403);
+        ResponseHelper::json([
+            'error'   => 'End room failed',
+            'message' => $e->getMessage(),
+        ]);
+    }
         break;
 
     case '/api/rooms/disband':

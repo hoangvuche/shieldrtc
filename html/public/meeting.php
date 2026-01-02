@@ -2,9 +2,6 @@
 session_start();
 
 $_SESSION['module'] = 'meeting';
-
-require_once __DIR__ . '/../app/Bootstrap/mybootstrap.php';
-include_once webroot_fs_path('/../app/Services/rateLimiter.php');
 ?>
 
 <!DOCTYPE html>
@@ -104,6 +101,7 @@ include_once webroot_fs_path('/../app/Services/rateLimiter.php');
             <input type="text" id="roomId" placeholder="Enter room ID">
             <button id="joinBtn" class="btn-primary" disabled>Join</button>
             <button id="endBtn" class="btn-danger" disabled>End</button>
+            <button id="destroyBtn" class="btn-danger btn-danger--outline" title="Disband room" disabled>Disband</button>
             <button id="copyRoomJoin" class="icon-btn icon-btn--subtle" title="Copy room ID">
               <span class="material-symbols-outlined">content_copy</span>
             </button>

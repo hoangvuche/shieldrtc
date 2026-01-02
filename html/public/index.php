@@ -1,6 +1,9 @@
 <?php
 define('WEBROOT_FS_PATH', __DIR__);
-require_once __DIR__ . '/../vendor/autoload.php';
+
+require_once __DIR__ . '/../app/Bootstrap/mybootstrap.php';
+include_once webroot_fs_path('/../app/Services/rateLimiter.php');
+require_once webroot_fs_path('/../vendor/autoload.php');
 
 use Dotenv\Dotenv;
 

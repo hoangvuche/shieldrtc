@@ -2,12 +2,14 @@ const LOGIN_URL = "https://app.shieldrtc.com/api/login";
 const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
 const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
 
-
 // --- Multi-device support: allow one user to join the same room from multiple devices/tabs.
 // LiveKit requires each participant identity to be unique, so we send:
 // - device_id: stable per browser (localStorage)
 // - session_id: unique per tab/load
 const __DEVICE_ID_KEY = 'shieldrtc_device_id';
+
+// TODO: giá trị này sẽ inject từ server sau
+let isHost = false;
 
 function __lkMakeId(prefix = 'id') {
   try {
@@ -2270,6 +2272,11 @@ bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
         return;
       }
 
+      // server trả về data.is_host
+      if (typeof data.is_host === 'boolean') {
+        isHost = data.is_host;
+      }
+
       // create room
       const room = new LivekitClient.Room();
       currentRoom = room;
@@ -2286,6 +2293,8 @@ bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
           alert("You were disconnected because your identity is used elsewhere.");
         } else if (reason === LivekitClient.DisconnectReason?.JOIN_FAILURE) {
           alert("Cannot join this room. Please try again.");
+        } else if (reason === LivekitClient.DisconnectReason?.ROOM_DELETED) {
+          alert("Host ended the room.");
         }
       });
 
@@ -2638,6 +2647,17 @@ room.on('participantDisconnected', (participant) => {
       const sendBtn = document.getElementById("sendChatBtn");
       if (sendBtn) sendBtn.disabled = false;
 
+      const destroyBtn = document.getElementById('destroyBtn');
+      if (destroyBtn) {
+        if (isHost) {
+          destroyBtn.disabled = false;
+          destroyBtn.style.display = '';
+        } else {
+          destroyBtn.disabled = true;
+          destroyBtn.style.display = 'none';
+        }
+      }
+
       if (toggleCameraBtn) toggleCameraBtn.disabled = false;
       if (switchCameraBtn) switchCameraBtn.disabled = false;
       if (toggleMicBtn) toggleMicBtn.disabled = false;
@@ -2883,4 +2903,63 @@ room.on('participantDisconnected', (participant) => {
 
     resetCallUI();
   };
+
+  // Disband call
+  const destroyBtnEl = document.getElementById('destroyBtn');
+  if (destroyBtnEl) {
+    destroyBtnEl.onclick = async () => {
+      if (!isHost) {
+        alert("You are not the host.");
+        return;
+      }
+
+      const roomId = document.getElementById("roomId").value.trim();
+      if (!roomId) {
+        alert("Missing room id");
+        return;
+      }
+
+      const ok = confirm(
+        "Disband room?\n" +
+        "All participants will exit room immediately."
+      );
+      if (!ok) return;
+
+      destroyBtnEl.disabled = true;
+
+      try {
+        const res = await fetch("https://app.shieldrtc.com/api/rooms/disband", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + SIGNAL_JWT,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ room_id: roomId })
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || "Disband failed.");
+          destroyBtnEl.disabled = false;
+          return;
+        }
+      } catch (e) {
+        console.error("Disband error:", e);
+        alert("Server error while disbanding room.");
+        destroyBtnEl.disabled = false;
+        return;
+      }
+
+      // cleanup local (host cũng bị out)
+      try { await stopScreenShareInternal(); } catch (e) {}
+      try { stopParticipantPruneLoop(); } catch (e) {}
+
+      if (currentRoom) {
+        try { await currentRoom.disconnect(); } catch (e) {}
+        currentRoom = null;
+      }
+
+      resetCallUI();
+    };
+  }
 });
