@@ -73,6 +73,7 @@ let cameraDisabledByScreenShare = false;
 
 // Chat related
 let CHAT_USERNAME = null;
+let LOGIN_USER_KEY = null;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
@@ -354,6 +355,77 @@ document.addEventListener('DOMContentLoaded', () => {
   const topbarRoomDot  = topbarRoomEl ? topbarRoomEl.querySelector('.dot') : null;
   const topbarRoomText = topbarRoomEl ? topbarRoomEl.querySelector('.chipText') : null;
   const topbarCountEl  = document.getElementById('topbarCount');
+
+// Logged-in user badge (topbar)
+const topbarUserEl     = document.getElementById('topbarUser');
+const topbarUserTextEl = document.getElementById('topbarUserText');
+
+function setTopbarUser(visible, text, title) {
+  if (!topbarUserEl) return;
+
+  topbarUserEl.classList.toggle('is-hidden', !visible);
+
+  // fallback: nếu thiếu span text thì tìm .chipText hoặc tạo mới
+  let el = topbarUserTextEl;
+  if (!el) {
+    el = topbarUserEl.querySelector('#topbarUserText') || topbarUserEl.querySelector('.chipText');
+  }
+  if (!el) {
+    el = document.createElement('span');
+    el.id = 'topbarUserText';
+    el.className = 'chipText';
+    topbarUserEl.appendChild(el);
+  }
+  el.textContent = text || '';
+
+  if (typeof title === 'string') topbarUserEl.title = title;
+}
+
+// Safe decode of JWT payload (no verification; used only for UI display)
+function __b64urlDecode(s) {
+  try {
+    s = String(s || '').replace(/-/g, '+').replace(/_/g, '/');
+    const pad = s.length % 4;
+    if (pad) s += '='.repeat(4 - pad);
+    return atob(s);
+  } catch (e) { return ''; }
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const raw = __b64urlDecode(parts[1]);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) { return null; }
+}
+
+function normalizeToken(token) {
+  return String(token || '').trim().replace(/^Bearer\s+/i, '');
+}
+
+function extractUserKeyFromLogin(data, token) {
+  // server trả { signal_jwt }, payload có { user_id, username }
+  const t = normalizeToken(token || data?.signal_jwt || '');
+  const payload = decodeJwtPayload(t);
+  if (!payload) return '';
+
+  // ưu tiên user_key nếu sau này bạn có add
+  return String(
+    payload.user_key ||
+    payload.userKey ||
+    payload.key ||
+    payload.username ||     // <-- cái bạn đang có
+    payload.user_id ||      // fallback cuối
+    payload.sub ||
+    ''
+  ).trim();
+}
+
+// Default: hide until login success
+setTopbarUser(false, 'KEY: —', 'Not logged in');
+
 
   function setTopbarStatus(connected, roomId) {
     if (topbarRoomDot) topbarRoomDot.classList.toggle('ok', !!connected);
@@ -2087,12 +2159,20 @@ function ensureParticipantTile(sid, name) {
       const data = await res.json();
       if (data.signal_jwt) {
         SIGNAL_JWT = data.signal_jwt;
-        CHAT_USERNAME = username || 'User';
+
+        const payload = decodeJwtPayload(SIGNAL_JWT) || {};
+        CHAT_USERNAME = payload.username || username || 'User';
+
+        // Show logged-in badge (icon + user key)
+        LOGIN_USER_KEY = extractUserKeyFromLogin(data, SIGNAL_JWT);
+        setTopbarUser(true, `Welcome, ${LOGIN_USER_KEY || '—'}`, `Logged in as ${CHAT_USERNAME}`);
 
         document.getElementById("createRoomBtn").disabled = false;
         document.getElementById("joinBtn").disabled = false;
         alert("Login success! You can now create or join a room.");
       } else {
+        LOGIN_USER_KEY = null;
+        try { setTopbarUser(false, 'KEY: —', 'Not logged in'); } catch (e) {}
         alert("Login failed: " + JSON.stringify(data));
       }
     } catch (err) {

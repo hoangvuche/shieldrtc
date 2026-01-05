@@ -1,5 +1,23 @@
 <?php 
-session_start();
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    // cookie params nên set trước session_start
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'domain'   => '',
+        'secure'   => $isHttps,   // HTTPS thì true
+        'httponly' => true,
+        'samesite' => 'Lax',      // nếu cần cross-site iframe/login thì đổi 'None' + secure=true
+    ]);
+
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+
+    session_start();
+}
 
 $_SESSION['module'] = 'meeting';
 ?>
@@ -45,7 +63,13 @@ $_SESSION['module'] = 'meeting';
         <span class="dot"></span>
         <span class="chipText">Not connected</span>
       </div>
-      <div class="chip chip-muted">
+      
+<!-- Logged-in user badge (shown after login success) -->
+<div id="topbarUser" class="chip chip-user is-hidden" title="Not logged in">
+  <span class="material-symbols-outlined" style="font-size:18px;">person</span>
+  <span id="topbarUserText" class="chipText">KEY: —</span>
+</div>
+<div class="chip chip-muted">
         <span class="material-symbols-outlined" style="font-size:18px;">group</span>
         <span id="topbarCount">0</span>
       </div>

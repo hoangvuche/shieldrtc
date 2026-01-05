@@ -29,16 +29,82 @@ switch ($path) {
         $user = $auth->verifyCredentials($username, $password);
 
         if ($user) {
-            // Sinh Signal JWT có chứa user_id / identity
+
+            // ---- Multi-device / multi-tab identifiers (client nên gửi lên) ----
+            $deviceId  = isset($input['device_id']) && is_string($input['device_id']) ? trim($input['device_id']) : '';
+            $sessionId = isset($input['session_id']) && is_string($input['session_id']) ? trim($input['session_id']) : '';
+
+            // sanitize nhẹ để tránh ký tự lạ
+            $deviceId  = preg_replace('/[^a-zA-Z0-9_\-:.]/', '', $deviceId);
+            $sessionId = preg_replace('/[^a-zA-Z0-9_\-:.]/', '', $sessionId);
+
+            // device_id: ưu tiên giữ ổn định theo browser/device
+            // - nếu client không gửi thì dùng cái đã có trong session
+            // - nếu chưa có thì tạo mới và trả về cho client lưu (localStorage)
+            if ($deviceId === '') {
+                $deviceId = $_SESSION['auth']['device_id'] ?? '';
+            }
+            if ($deviceId === '') {
+                $deviceId = bin2hex(random_bytes(16));
+            }
+
+            // session_id: nên là per-tab (sessionStorage ở client). Nếu client không gửi, vẫn tạo 1 cái cho “phiên” này.
+            if ($sessionId === '') {
+                $sessionId = bin2hex(random_bytes(16));
+            }
+
+            // chống session fixation
+            session_regenerate_id(true);
+
+            // ---- Sinh Signal JWT có chứa user_id / identity ----
             $jwt = $auth->generateSignalToken([
                 'user_id'  => $user['id'],
                 'username' => $user['username']
             ]);
-            ResponseHelper::json(['signal_jwt' => $jwt]);
+
+            // ---- Lưu session (per browser session) ----
+            $_SESSION['auth'] = [
+                'user_id'    => (int)$user['id'],
+                'username'   => (string)$user['username'],
+                'signal_jwt' => (string)$jwt,
+
+                // multi-device keys
+                'device_id'  => (string)$deviceId,
+
+                // multi-tab: lưu dạng “set” để không bị overwrite giữa các tab
+                'tab_sessions' => array_replace(
+                    $_SESSION['auth']['tab_sessions'] ?? [],
+                    [ (string)$sessionId => time() ]
+                ),
+
+                'login_at'   => time(),
+            ];
+
+            // (tuỳ chọn) CSRF token cho các request cookie-based (nếu sau này bạn fallback qua session)
+            if (empty($_SESSION['auth']['csrf'])) {
+                $_SESSION['auth']['csrf'] = bin2hex(random_bytes(16));
+            }
+
+            ResponseHelper::json([
+                'signal_jwt' => $jwt,
+                'user' => [
+                    'id'       => (int)$user['id'],
+                    'username' => (string)$user['username'],
+                ],
+
+                // trả về để client “đóng đinh” multi-device/multi-tab
+                'device_id'  => $deviceId,
+                'session_id' => $sessionId,
+
+                // nếu bạn dùng cookie-based về sau
+                'csrf' => $_SESSION['auth']['csrf'],
+            ]);
+
         } else {
             http_response_code(401);
             ResponseHelper::json(['error' => 'Invalid credentials']);
         }
+
         break;
 
     case '/api/rooms/create':

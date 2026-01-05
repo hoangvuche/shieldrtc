@@ -133,6 +133,17 @@ body.app{
 }
 
 .chip-muted{ color: var(--muted); }
+
+/* Logged-in user badge */
+.chip-user{
+  background:
+    radial-gradient(120% 140% at 15% 20%, rgba(76,201,240,0.22), rgba(0,0,0,0) 55%),
+    radial-gradient(120% 140% at 85% 85%, rgba(167,139,250,0.16), rgba(0,0,0,0) 58%),
+    rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.14);
+}
+.chip-user .material-symbols-outlined{ opacity: 0.95; }
+.chip-user .chipText{ max-width: 240px; }
 .chip .dot{
   flex: 0 0 auto;
   width: 8px; height: 8px; border-radius: 50%;
@@ -871,6 +882,10 @@ body.is-stage-fullscreen .stageHead{ display: none; }
   padding: 12px;
   border-top: 1px solid rgba(255,255,255,0.08);
   background: rgba(0,0,0,0.14);
+}
+
+.stageControlsWrap .controlDock{
+  /* handled by grid layout in .stageControlDock */
 }
 
 /* Side controls panel is now moved into the stage */
