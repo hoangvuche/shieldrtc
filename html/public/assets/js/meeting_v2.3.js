@@ -1,4 +1,5 @@
 const LOGIN_URL = "https://app.shieldrtc.com/api/login";
+const LOGOUT_URL = "https://app.shieldrtc.com/api/logout";
 const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
 const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
 
@@ -111,6 +112,37 @@ function escapeHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+/**
+ * Media-permission preflight.
+ * On mobile browsers (especially iOS WebKit), calling getUserMedia must happen directly
+ * from a user gesture (before any await/network), otherwise the prompt may not appear and
+ * the call can be blocked.
+ *
+ * We request camera+mic once, then immediately stop tracks. Later LiveKit can create tracks
+ * normally without losing the user-gesture requirement.
+ */
+async function preflightMediaPermissions() {
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+    const isSecure =
+      window.isSecureContext ||
+      location.protocol === 'https:' ||
+      location.hostname === 'localhost' ||
+      location.hostname === '127.0.0.1';
+
+    if (!isSecure) {
+      console.warn('[media] getUserMedia requires HTTPS (secure context).');
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    console.warn('[media] permission preflight failed:', e);
+  }
 }
 
 function appendChatMessage(sender, message, isLocal) {
@@ -381,6 +413,45 @@ function setTopbarUser(visible, text, title) {
   if (typeof title === 'string') topbarUserEl.title = title;
 }
 
+// Access card state (login / logged-in)
+const accessLoggedOutEl = document.getElementById('accessLoggedOut');
+const accessLoggedInEl  = document.getElementById('accessLoggedIn');
+const accessUserNameEl  = document.getElementById('accessUserName');
+const accessUserMetaEl  = document.getElementById('accessUserMeta');
+const accessStatusEl    = document.getElementById('accessStatus');
+const logoutBtnEl       = document.getElementById('logoutBtn');
+
+function setAccessStatus(message, variant) {
+  if (!accessStatusEl) return;
+  const msg = String(message || '').trim();
+  if (!msg) {
+    accessStatusEl.classList.add('is-hidden');
+    accessStatusEl.textContent = '';
+    accessStatusEl.classList.remove('is-ok', 'is-err');
+    return;
+  }
+  accessStatusEl.classList.remove('is-hidden');
+  accessStatusEl.classList.toggle('is-ok', variant === 'ok');
+  accessStatusEl.classList.toggle('is-err', variant === 'err');
+  accessStatusEl.textContent = msg;
+}
+
+function setAccessLoggedIn(on) {
+  const yes = !!on;
+  if (accessLoggedOutEl) accessLoggedOutEl.classList.toggle('is-hidden', yes);
+  if (accessLoggedInEl) accessLoggedInEl.classList.toggle('is-hidden', !yes);
+
+  if (yes) {
+    const name = String(CHAT_USERNAME || '').trim() || 'User';
+    const key  = String(LOGIN_USER_KEY || '').trim();
+    if (accessUserNameEl) accessUserNameEl.textContent = name;
+    if (accessUserMetaEl) accessUserMetaEl.textContent = key ? `KEY: ${key}` : 'Authenticated';
+  } else {
+    if (accessUserNameEl) accessUserNameEl.textContent = '—';
+    if (accessUserMetaEl) accessUserMetaEl.textContent = 'Not logged in';
+  }
+}
+
 // Safe decode of JWT payload (no verification; used only for UI display)
 function __b64urlDecode(s) {
   try {
@@ -425,6 +496,56 @@ function extractUserKeyFromLogin(data, token) {
 
 // Default: hide until login success
 setTopbarUser(false, 'KEY: —', 'Not logged in');
+
+function setAuthButtonsEnabled(on) {
+  const yes = !!on;
+  const createBtn = document.getElementById('createRoomBtn');
+  const joinBtn   = document.getElementById('joinBtn');
+  if (createBtn) createBtn.disabled = !yes;
+  if (joinBtn) joinBtn.disabled = !yes;
+}
+
+function applyAuthFromSignalJwt(token, fallbackUsername) {
+  const t = normalizeToken(token || '');
+  if (!t) return false;
+
+  SIGNAL_JWT = t;
+
+  const payload = decodeJwtPayload(SIGNAL_JWT) || {};
+  CHAT_USERNAME = String(payload.username || fallbackUsername || payload.name || 'User');
+
+  LOGIN_USER_KEY = extractUserKeyFromLogin({ signal_jwt: SIGNAL_JWT }, SIGNAL_JWT);
+
+  setTopbarUser(true, `KEY: ${LOGIN_USER_KEY || '—'}`, `Logged in as ${CHAT_USERNAME}`);
+  setAccessLoggedIn(true);
+  setAuthButtonsEnabled(true);
+
+  return true;
+}
+
+function clearAuthState() {
+  SIGNAL_JWT = null;
+  CHAT_USERNAME = null;
+  LOGIN_USER_KEY = null;
+
+  setTopbarUser(false, 'KEY: —', 'Not logged in');
+  setAccessLoggedIn(false);
+  setAuthButtonsEnabled(false);
+}
+
+// Bootstrap auth (if meeting.php injected it)
+try {
+  const b = (typeof window !== 'undefined' && window.__MEETING_BOOTSTRAP__) ? window.__MEETING_BOOTSTRAP__ : null;
+  if (b && b.signal_jwt) {
+    const ok = applyAuthFromSignalJwt(b.signal_jwt, b.username);
+    if (ok) setAccessStatus('Logged in (restored from session).', 'ok');
+  } else {
+    // keep UI in logged-out state
+    clearAuthState();
+  }
+} catch (e) {
+  clearAuthState();
+}
 
 
   function setTopbarStatus(connected, roomId) {
@@ -1781,6 +1902,19 @@ function ensureParticipantTile(sid, name) {
     videoEl.dataset.participant = sid;
     videoEl.dataset.source = 'camera';
 
+
+    // Mobile playback friendliness
+    try {
+      videoEl.autoplay = true;
+      videoEl.playsInline = true;
+      videoEl.setAttribute('playsinline', '');
+      videoEl.setAttribute('webkit-playsinline', '');
+      if (isLocal) videoEl.muted = true; // helps autoplay + avoids echo on local preview
+      const p = videoEl.play?.();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (e) {
+      // ignore
+    }
     // mirror cho local cam trước
     if (isLocal && cameraFacingMode === 'user') {
       videoEl.classList.add('mirror-video');
@@ -2147,38 +2281,90 @@ function ensureParticipantTile(sid, name) {
   // -------- Login
   document.getElementById("loginBtn").onclick = async () => {
     try {
-      const username = document.getElementById("username").value;
-      const password = document.getElementById("password").value;
+      const username = String(document.getElementById("username").value || '').trim();
+      const password = String(document.getElementById("password").value || '').trim();
+
+      if (!username || !password) {
+        setAccessStatus('Missing username or password.', 'err');
+        return;
+      }
+
+      setAccessStatus('Logging in…', '');
 
       const res = await fetch(LOGIN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        credentials: 'include',
+        body: JSON.stringify({
+          username,
+          password,
+          device_id: DEVICE_ID,
+          session_id: SESSION_ID,
+        })
       });
 
-      const data = await res.json();
-      if (data.signal_jwt) {
-        SIGNAL_JWT = data.signal_jwt;
+      const data = await res.json().catch(() => ({}));
 
-        const payload = decodeJwtPayload(SIGNAL_JWT) || {};
-        CHAT_USERNAME = payload.username || username || 'User';
-
-        // Show logged-in badge (icon + user key)
-        LOGIN_USER_KEY = extractUserKeyFromLogin(data, SIGNAL_JWT);
-        setTopbarUser(true, `Welcome, ${LOGIN_USER_KEY || '—'}`, `Logged in as ${CHAT_USERNAME}`);
-
-        document.getElementById("createRoomBtn").disabled = false;
-        document.getElementById("joinBtn").disabled = false;
-        alert("Login success! You can now create or join a room.");
+      if (data && data.signal_jwt) {
+        const ok = applyAuthFromSignalJwt(data.signal_jwt, username);
+        if (ok) {
+          // xóa pass cho đỡ lộ khi share màn hình
+          try { document.getElementById('password').value = ''; } catch (e) {}
+          setAccessStatus('Login successful. You can now create/join a room.', 'ok');
+        } else {
+          clearAuthState();
+          setAccessStatus('Login failed (empty token).', 'err');
+        }
       } else {
-        LOGIN_USER_KEY = null;
-        try { setTopbarUser(false, 'KEY: —', 'Not logged in'); } catch (e) {}
-        alert("Login failed: " + JSON.stringify(data));
+        clearAuthState();
+        const msg = (data && (data.error || data.message)) ? String(data.error || data.message) : JSON.stringify(data);
+        setAccessStatus(`Login failed: ${msg}`, 'err');
       }
     } catch (err) {
       console.error("Login error:", err);
+      clearAuthState();
+      setAccessStatus('Login error (network/server).', 'err');
     }
   };
+
+  // -------- Logout
+  async function performLogout() {
+    // best-effort: logout API (clear PHP session)
+    try {
+      await fetch(LOGOUT_URL, { method: 'POST', credentials: 'include' });
+    } catch (e) {}
+
+    // cleanup local room state
+    try { await stopScreenShareInternal(); } catch (e) {}
+    try { stopParticipantPruneLoop(); } catch (e) {}
+    if (currentRoom) {
+      try { await currentRoom.disconnect(); } catch (e) {}
+      currentRoom = null;
+    }
+
+    try { isHost = false; } catch (e) {}
+
+    // reset UI (tiles/buttons)
+    try { resetCallUI(); } catch (e) {}
+
+    // clear auth UI
+    clearAuthState();
+    setAccessStatus('Logged out.', 'ok');
+
+    // clear inputs
+    try { document.getElementById('password').value = ''; } catch (e) {}
+  }
+
+  if (logoutBtnEl) {
+    logoutBtnEl.onclick = async () => {
+      // nếu đang trong room thì rời trước cho sạch
+      if (currentRoom) {
+        const roomId = String(document.getElementById('roomId')?.value || '').trim();
+        setAccessStatus(`Leaving room ${roomId || ''}…`, '');
+      }
+      await performLogout();
+    };
+  }
 
   // Copy Room ID buttons (Created + Join)
 function bindCopyIconButton(btn, getText){
@@ -2327,7 +2513,10 @@ bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
       const roomId = document.getElementById("roomId").value.trim();
       if (!roomId) { alert("Please enter a room ID first!"); return; }
 
-      // token
+      
+      await preflightMediaPermissions();
+
+// token
       const res = await fetch(PORTAL_URL, {
         method: "POST",
         headers: {

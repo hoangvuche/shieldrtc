@@ -14,8 +14,28 @@ switch ($path) {
         break;
 
     case '/api/login':
+        // --- Ensure PHP session is started (so $_SESSION works)
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+
+            session_set_cookie_params([
+                'lifetime' => 0,
+                'path'     => '/',
+                'domain'   => '',
+                'secure'   => $isHttps,
+                'httponly' => true,
+                'samesite' => 'Lax', // nếu FE ở domain khác -> 'None' + secure=true
+            ]);
+
+            ini_set('session.use_strict_mode', '1');
+            ini_set('session.use_only_cookies', '1');
+
+            session_start();
+        }
+
         // đọc body JSON
-        $input = json_decode(file_get_contents('php://input'), true);
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
         $username = $input['username'] ?? null;
         $password = $input['password'] ?? null;
 
@@ -39,8 +59,6 @@ switch ($path) {
             $sessionId = preg_replace('/[^a-zA-Z0-9_\-:.]/', '', $sessionId);
 
             // device_id: ưu tiên giữ ổn định theo browser/device
-            // - nếu client không gửi thì dùng cái đã có trong session
-            // - nếu chưa có thì tạo mới và trả về cho client lưu (localStorage)
             if ($deviceId === '') {
                 $deviceId = $_SESSION['auth']['device_id'] ?? '';
             }
@@ -48,19 +66,36 @@ switch ($path) {
                 $deviceId = bin2hex(random_bytes(16));
             }
 
-            // session_id: nên là per-tab (sessionStorage ở client). Nếu client không gửi, vẫn tạo 1 cái cho “phiên” này.
+            // session_id: per-tab (sessionStorage). Nếu client không gửi thì tạo 1 cái.
             if ($sessionId === '') {
                 $sessionId = bin2hex(random_bytes(16));
             }
 
-            // chống session fixation
+            // chống session fixation (chỉ làm sau khi login OK)
             session_regenerate_id(true);
 
-            // ---- Sinh Signal JWT có chứa user_id / identity ----
+            // ---- Sinh Signal JWT ----
             $jwt = $auth->generateSignalToken([
                 'user_id'  => $user['id'],
-                'username' => $user['username']
+                'username' => $user['username'],
             ]);
+
+            // (tuỳ chọn) prune tab_sessions để tránh phình vô hạn
+            $tabSessions = $_SESSION['auth']['tab_sessions'] ?? [];
+            if (is_array($tabSessions)) {
+                $now = time();
+                foreach ($tabSessions as $k => $t) {
+                    if (!is_numeric($t) || ($now - (int)$t) > 86400 * 7) { // giữ 7 ngày
+                        unset($tabSessions[$k]);
+                    }
+                }
+                if (count($tabSessions) > 50) { // chặn số lượng tab quá nhiều
+                    asort($tabSessions); // cũ lên đầu
+                    $tabSessions = array_slice($tabSessions, -50, null, true);
+                }
+            } else {
+                $tabSessions = [];
+            }
 
             // ---- Lưu session (per browser session) ----
             $_SESSION['auth'] = [
@@ -68,19 +103,18 @@ switch ($path) {
                 'username'   => (string)$user['username'],
                 'signal_jwt' => (string)$jwt,
 
-                // multi-device keys
                 'device_id'  => (string)$deviceId,
 
-                // multi-tab: lưu dạng “set” để không bị overwrite giữa các tab
+                // multi-tab: lưu dạng set, không overwrite giữa các tab
                 'tab_sessions' => array_replace(
-                    $_SESSION['auth']['tab_sessions'] ?? [],
+                    $tabSessions,
                     [ (string)$sessionId => time() ]
                 ),
 
                 'login_at'   => time(),
             ];
 
-            // (tuỳ chọn) CSRF token cho các request cookie-based (nếu sau này bạn fallback qua session)
+            // CSRF token (nếu sau này bạn gọi API kiểu cookie-based)
             if (empty($_SESSION['auth']['csrf'])) {
                 $_SESSION['auth']['csrf'] = bin2hex(random_bytes(16));
             }
@@ -91,13 +125,9 @@ switch ($path) {
                     'id'       => (int)$user['id'],
                     'username' => (string)$user['username'],
                 ],
-
-                // trả về để client “đóng đinh” multi-device/multi-tab
                 'device_id'  => $deviceId,
                 'session_id' => $sessionId,
-
-                // nếu bạn dùng cookie-based về sau
-                'csrf' => $_SESSION['auth']['csrf'],
+                'csrf'       => $_SESSION['auth']['csrf'],
             ]);
 
         } else {
@@ -105,6 +135,63 @@ switch ($path) {
             ResponseHelper::json(['error' => 'Invalid credentials']);
         }
 
+        break;
+
+    case '/api/logout':
+        // --- Ensure session started ---
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+
+            session_set_cookie_params([
+                'lifetime' => 0,
+                'path'     => '/',
+                'domain'   => '',
+                'secure'   => $isHttps,
+                'httponly' => true,
+                'samesite' => 'Lax', // nếu cross-site -> 'None' + secure=true
+            ]);
+
+            ini_set('session.use_strict_mode', '1');
+            ini_set('session.use_only_cookies', '1');
+
+            session_start();
+        }
+
+        // --- Optional: audit info before wipe ---
+        $userId  = $_SESSION['auth']['user_id'] ?? null;
+        $roomId  = null;
+        $body    = json_decode(file_get_contents('php://input'), true) ?? [];
+        if (isset($body['room_id'])) {
+            $roomId = $body['room_id'];
+        }
+
+        // --- Wipe session data ---
+        $_SESSION = [];
+
+        // --- Remove session cookie ---
+        if (ini_get('session.use_cookies')) {
+            $p = session_get_cookie_params();
+
+            // NOTE: setcookie signature differs across PHP versions; this is PHP 7.3+
+            setcookie(session_name(), '', [
+                'expires'  => time() - 42000,
+                'path'     => $p['path'] ?? '/',
+                'domain'   => $p['domain'] ?? '',
+                'secure'   => $p['secure'] ?? false,
+                'httponly' => $p['httponly'] ?? true,
+                'samesite' => $p['samesite'] ?? 'Lax',
+            ]);
+        }
+
+        session_destroy();
+
+        ResponseHelper::json([
+            'status'  => 'ok',
+            'user_id' => $userId,
+            'room_id' => $roomId,
+            'at'      => date('c'),
+        ]);
         break;
 
     case '/api/rooms/create':
@@ -170,32 +257,45 @@ switch ($path) {
     case '/api/token/livekit':
         $auth = new AuthService();
 
-        // Body JSON: { "room": "demo" }
+        // --- Ensure session started (để sync multi-tab / device) ---
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+
+        // Body JSON: { "room": "demo", "device_id": "...", "session_id": "..." }
         $body = json_decode(file_get_contents('php://input'), true) ?? [];
         $room = isset($body['room']) && is_string($body['room']) ? trim($body['room']) : 'demo';
-        // Multi-device support: identity unique theo device/tab
-        $deviceId  = isset($body['device_id']) && is_string($body['device_id']) ? trim($body['device_id']) : '';
-        $sessionId = isset($body['session_id']) && is_string($body['session_id']) ? trim($body['session_id']) : '';
-
-        // sanitize nhẹ để tránh ký tự lạ đi vào identity/metadata
-        $deviceId  = preg_replace('/[^a-zA-Z0-9_\-:.]/', '', $deviceId);
-        $sessionId = preg_replace('/[^a-zA-Z0-9_\-:.]/', '', $sessionId);
-
-        if ($deviceId === '')  { $deviceId  = bin2hex(random_bytes(8)); }
-        if ($sessionId === '') { $sessionId = bin2hex(random_bytes(8)); }
-
 
         // Lấy Authorization header (robust, hỗ trợ lowercase & server khác nhau)
         $headers = function_exists('getallheaders') ? getallheaders() : [];
-        $authHeader = $headers['Authorization'] 
+        $authHeader = $headers['Authorization']
             ?? ($headers['authorization'] ?? ($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
 
-        if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $m)) {
+        $signalJwt = null;
+
+        if (preg_match('/Bearer\s+(\S+)/i', (string)$authHeader, $m)) {
+            $signalJwt = $m[1];
+        }
+
+        $allowGuest = (int)($_ENV['ALLOW_GUEST'] ?? 0) === 1;
+
+        if (!$signalJwt) {
+            if ($allowGuest) {
+                http_response_code(501);
+                ResponseHelper::json([
+                    'error'   => 'GUEST_NOT_IMPLEMENTED',
+                    'message' => 'Guest access is enabled but not implemented yet.',
+                ]);
+                break;
+            }
+
             http_response_code(401);
-            ResponseHelper::json(['error' => 'Missing or invalid Authorization header']);
+            ResponseHelper::json([
+                'error'   => 'LOGIN_REQUIRED',
+                'message' => 'Please login first',
+            ]);
             break;
         }
-        $signalJwt = $m[1];
 
         try {
             $jwtSecret = $_ENV['JWT_SECRET'] ?? 'changeme';
@@ -208,8 +308,88 @@ switch ($path) {
                 throw new \Exception('Invalid JWT: missing user_id');
             }
 
-            // Sinh LiveKit JWT cho đúng user + room
-            // Sinh LiveKit JWT cho đúng user + room (multi-device safe)
+            // --- Require logged-in session (hard requirement for now) ---
+            $sess = $_SESSION['auth'] ?? null;
+            if (!is_array($sess) || empty($sess['user_id']) || empty($sess['signal_jwt'])) {
+                http_response_code(401);
+                ResponseHelper::json([
+                    'error' => 'LOGIN_REQUIRED',
+                    'message' => 'Session not found. Please login again.',
+                ]);
+                break;
+            }
+
+            // Must match user_id in session
+            if ((int)$sess['user_id'] !== (int)$userId) {
+                http_response_code(401);
+                ResponseHelper::json([
+                    'error' => 'SESSION_MISMATCH',
+                    'message' => 'Session user mismatch. Please login again.',
+                ]);
+                break;
+            }
+
+            // Must match the exact token in session (so logout kills reuse)
+            if (!hash_equals((string)$sess['signal_jwt'], (string)$signalJwt)) {
+                http_response_code(401);
+                ResponseHelper::json([
+                    'error' => 'TOKEN_MISMATCH',
+                    'message' => 'Token does not match current session. Please login again.',
+                ]);
+                break;
+            }
+
+            // Multi-device support: identity unique theo device/tab
+            $deviceId  = isset($body['device_id']) && is_string($body['device_id']) ? trim($body['device_id']) : '';
+            $sessionId = isset($body['session_id']) && is_string($body['session_id']) ? trim($body['session_id']) : '';
+
+            // sanitize nhẹ để tránh ký tự lạ đi vào identity/metadata
+            $deviceId  = preg_replace('/[^a-zA-Z0-9_\-:.]/', '', $deviceId);
+            $sessionId = preg_replace('/[^a-zA-Z0-9_\-:.]/', '', $sessionId);
+
+            // device_id: ưu tiên ổn định theo session -> nếu chưa có thì lấy từ body -> cuối cùng mới random
+            $deviceIdSess = $_SESSION['auth']['device_id'] ?? '';
+            if ($deviceIdSess !== '') {
+                $deviceId = $deviceIdSess; // force ổn định
+            } else if ($deviceId !== '') {
+                // dùng device_id client gửi (ví dụ localStorage)
+                // giữ nguyên $deviceId
+            } else {
+                $deviceId = bin2hex(random_bytes(16));
+            }
+
+            // session_id: per-tab (client nên lưu sessionStorage). Nếu thiếu thì tạo 1 cái.
+            if ($sessionId === '') {
+                $sessionId = bin2hex(random_bytes(16));
+            }
+
+            $_SESSION['auth']['user_id']    = $userId;
+            $_SESSION['auth']['username']   = $username;
+            $_SESSION['auth']['signal_jwt'] = (string)$signalJwt;
+            $_SESSION['auth']['device_id']  = (string)$deviceId;
+
+            // update last-seen cho tab session
+            $tabSessions = $_SESSION['auth']['tab_sessions'] ?? [];
+            if (!is_array($tabSessions)) {
+                $tabSessions = [];
+            }
+            $tabSessions[(string)$sessionId] = time();
+
+            // prune để tránh phình vô hạn
+            $now = time();
+            foreach ($tabSessions as $k => $t) {
+                if (!is_numeric($t) || ($now - (int)$t) > 86400 * 7) { // giữ 7 ngày
+                    unset($tabSessions[$k]);
+                }
+            }
+            if (count($tabSessions) > 50) {
+                asort($tabSessions); // cũ lên đầu
+                $tabSessions = array_slice($tabSessions, -50, null, true);
+            }
+
+            $_SESSION['auth']['tab_sessions'] = $tabSessions;
+
+            // --- LiveKit identity/metadata ---
             $identity = 'u' . $userId . '_' . substr(hash('sha256', $deviceId . '|' . $sessionId), 0, 16);
             $metadata = json_encode([
                 'user_id'    => $userId,
@@ -222,7 +402,6 @@ switch ($path) {
                 'user_id'  => $userId,
                 'username' => $username,
                 'room'     => $room,
-
                 'identity' => $identity,
                 'name'     => $username,
                 'metadata' => $metadata,
@@ -258,13 +437,17 @@ switch ($path) {
                 'livekit_url' => $livekitUrl,
                 'livekit_jwt' => $livekitJwt,
                 'ice_servers' => $iceServers,
-                // exp của TURN creds (tham khảo cho client set timer refresh)
-                'exp' => time() + $ttl,
+                'exp'         => time() + $ttl,
                 'user' => [
                     'id'       => $userId,
                     'username' => $username,
                 ],
+
+                // trả lại để client “đóng đinh”
+                'device_id'  => $deviceId,
+                'session_id' => $sessionId,
             ]);
+
         } catch (\Throwable $e) {
             http_response_code(401);
             ResponseHelper::json([

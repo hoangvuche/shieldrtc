@@ -248,6 +248,45 @@ body.app{
   gap: 10px;
 }
 
+/* ---- Access card (login / logged-in) ---- */
+#accessCard .accessUserRow{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.18);
+}
+
+#accessCard .accessUserText{ min-width: 0; }
+
+#accessCard .accessUserName{
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#accessCard .accessUserMeta{
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#accessCard .accessActions{
+  display: flex;
+  gap: 10px;
+}
+#accessCard .accessActions button{ width: 100%; }
+
+#accessStatus.is-ok{ color: rgba(76,201,240,0.92); }
+#accessStatus.is-err{ color: rgba(239,68,68,0.96); }
+
 label.small{
   font-size: 12px;
   color: var(--muted);

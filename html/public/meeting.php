@@ -19,7 +19,13 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
-$_SESSION['module'] = 'meeting';
+// --- Optional: bootstrap auth state from PHP session (set by /api/login)
+$__auth = $_SESSION['auth'] ?? null;
+$__bootstrap = [
+  'user_id'    => is_array($__auth) ? ($__auth['user_id'] ?? null) : null,
+  'username'   => is_array($__auth) ? ($__auth['username'] ?? null) : null,
+  'signal_jwt' => is_array($__auth) ? ($__auth['signal_jwt'] ?? null) : null,
+];
 ?>
 
 <!DOCTYPE html>
@@ -33,6 +39,11 @@ $_SESSION['module'] = 'meeting';
   <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.js"></script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=block" />
   <link rel="stylesheet" type="text/css" href="<?=asset("assets/css/meeting.css")?>">
+
+  <script>
+    // Server-side bootstrap (httpOnly session -> JS gets token only if you choose to store it in session)
+    window.__MEETING_BOOTSTRAP__ = <?= json_encode($__bootstrap, JSON_UNESCAPED_SLASHES) ?>;
+  </script>
 
   <!-- meeting_v2.2: + support multi device
   meeting_v2.3: + support screen map -->
@@ -79,20 +90,37 @@ $_SESSION['module'] = 'meeting';
   <main class="layout">
     <aside class="side">
 
-      <section class="card pad">
+      <section class="card pad" id="accessCard">
         <div class="cardHead">
           <h3>Access</h3>
           <div class="pill"><span class="spark"></span>No storage by design</div>
         </div>
 
-        <div class="fieldGrid">
+        <!-- Logged-out state -->
+        <div id="accessLoggedOut" class="fieldGrid">
           <div class="fieldRow">
-            <input type="text" id="username" placeholder="Username">
-            <input type="password" id="password" placeholder="Password">
+            <input type="text" id="username" placeholder="Username" autocomplete="username">
+            <input type="password" id="password" placeholder="Password" autocomplete="current-password">
           </div>
-
           <button id="loginBtn" class="btn-primary">Login</button>
         </div>
+
+        <!-- Logged-in state -->
+        <div id="accessLoggedIn" class="fieldGrid is-hidden">
+          <div class="accessUserRow" aria-label="Logged in user">
+            <span class="material-symbols-outlined" style="font-size:18px;">verified_user</span>
+            <div class="accessUserText">
+              <div id="accessUserName" class="accessUserName">—</div>
+              <div id="accessUserMeta" class="accessUserMeta">Token active</div>
+            </div>
+          </div>
+
+          <div class="accessActions">
+            <button id="logoutBtn" class="btn-danger btn-danger--outline">Logout</button>
+          </div>
+        </div>
+
+        <div id="accessStatus" class="hint is-hidden"></div>
 
         <div class="hint">
           Login is only used to mint a short-lived token. Messages and media are never stored on ShieldRTC servers.
