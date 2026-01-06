@@ -199,7 +199,7 @@ switch ($path) {
 
         // Lấy Authorization header
         $headers = function_exists('getallheaders') ? getallheaders() : [];
-        $authHeader = $headers['Authorization'] 
+        $authHeader = $headers['Authorization']
             ?? ($headers['authorization'] ?? ($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
 
         if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $m)) {
@@ -213,12 +213,12 @@ switch ($path) {
             // Giải mã Signal JWT
             $jwtSecret = $_ENV['JWT_SECRET'] ?? 'changeme';
             $decoded = \Firebase\JWT\JWT::decode(
-                $signalJwt, 
+                $signalJwt,
                 new \Firebase\JWT\Key($jwtSecret, 'HS256')
             );
 
-            $userId   = $decoded->user_id ?? null;
-            $username = $decoded->username ?? 'guest';
+            $userId   = isset($decoded->user_id) ? (int)$decoded->user_id : null;
+            $username = isset($decoded->username) && $decoded->username ? (string)$decoded->username : 'guest';
 
             if (!$userId) {
                 throw new \Exception('Invalid JWT: missing user_id');
@@ -234,7 +234,30 @@ switch ($path) {
                 mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
             );
 
-            // (Tùy chọn) lưu vào DB: rooms table với owner_id, created_at
+            // --- DB: persist room + audit create ---
+            try {
+                /** @var \App\Helpers\DbHelper $db */
+                $db = require webroot_fs_path('/../app/Bootstrap/database.php');
+
+                // test nhẹ (optional nhưng hữu ích)
+                $ok = $db->selectSingleValue('SELECT 1');
+                if ($ok !== '1' && $ok !== 1) {
+                    throw new \Exception('Unexpected DB test result');
+                }
+
+                $roomsRepo = new \App\Repositories\RoomsRepo($db);
+                $roomsRepo->createRoom($roomId, $userId);
+
+            } catch (\Throwable $dbEx) {
+                // Nếu bạn muốn: vẫn cho tạo phòng dù DB fail? => hiện tại mình chọn FAIL FAST
+                error_log('Error creating room in DB: ' . $dbEx->getMessage());
+                http_response_code(500);
+                ResponseHelper::json([
+                    'error'   => 'DB_ERROR',
+                    'message' => 'Failed to create room in DB',
+                ]);
+                break;
+            }
 
             ResponseHelper::json([
                 'room_id'    => $roomId,
@@ -242,7 +265,8 @@ switch ($path) {
                     'id'       => $userId,
                     'username' => $username
                 ],
-                'created_at' => date('c')
+                'is_host'    => true,
+                'created_at' => date('c'),
             ]);
 
         } catch (\Throwable $e) {
@@ -338,6 +362,62 @@ switch ($path) {
                 ]);
                 break;
             }
+
+            // =====================================================
+            // Room status gate: block disbanded rooms from re-join
+            // =====================================================
+            $roomRow = null;
+
+            try {
+                /** @var \App\Helpers\DbHelper $db */
+                $db = require webroot_fs_path('/../app/Bootstrap/database.php');
+
+                $repo = new \App\Repositories\RoomsRepo($db);
+
+                $roomRow = $repo->getRoomById($room);
+                if (!$roomRow) {
+                    http_response_code(404);
+                    ResponseHelper::json([
+                        'error'   => 'ROOM_NOT_FOUND',
+                        'message' => 'Room does not exist',
+                    ]);
+                    break;
+                }
+
+                $status = $roomRow['status'] ?? 'active';
+
+                if ($status === 'disbanded') {
+                    // 410 Gone = đã bị huỷ vĩnh viễn
+                    http_response_code(410);
+                    ResponseHelper::json([
+                        'error'   => 'ROOM_DISBANDED',
+                        'message' => 'This room was disbanded',
+                    ]);
+                    break;
+                }
+
+                if ($status !== 'active') {
+                    // ended/disbanded/unknown -> không cho join
+                    http_response_code(409);
+                    ResponseHelper::json([
+                        'error'   => 'ROOM_NOT_ACTIVE',
+                        'message' => 'Room is not active',
+                    ]);
+                    break;
+                }
+
+            } catch (\Throwable $e) {
+                error_log('room_status_check_failed: ' . $e->getMessage());
+                http_response_code(500);
+                ResponseHelper::json([
+                    'error'   => 'DB_ERROR',
+                    'message' => 'Failed to verify room status',
+                ]);
+                break;
+            }
+
+            // is_host dùng luôn roomRow (đỡ query DB lần 2)
+            $isHost = ((int)$roomRow['owner_id'] === (int)$userId);
 
             // Multi-device support: identity unique theo device/tab
             $deviceId  = isset($body['device_id']) && is_string($body['device_id']) ? trim($body['device_id']) : '';
@@ -446,6 +526,7 @@ switch ($path) {
                 // trả lại để client “đóng đinh”
                 'device_id'  => $deviceId,
                 'session_id' => $sessionId,
+                'is_host'    => $isHost
             ]);
 
         } catch (\Throwable $e) {
@@ -513,56 +594,129 @@ switch ($path) {
     case '/api/rooms/disband':
         $auth = new AuthService();
 
-        // --- Lấy Authorization header (giống các nhánh khác)
+        // --- Ensure session started (để chặn reuse token sau logout) ---
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+
+        // --- Lấy Authorization header ---
         $headers = function_exists('getallheaders') ? getallheaders() : [];
         $authHeader = $headers['Authorization']
             ?? ($headers['authorization'] ?? ($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
 
-        if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $m)) {
+        if (!preg_match('/Bearer\s+(\S+)/i', (string)$authHeader, $m)) {
             http_response_code(401);
-            ResponseHelper::json(['error' => 'Missing or invalid Authorization header']);
+            ResponseHelper::json([
+                'error' => 'MISSING_AUTH',
+                'message' => 'Missing or invalid Authorization header',
+            ]);
             break;
         }
         $signalJwt = $m[1];
 
+        // --- Input ---
+        $body = json_decode(file_get_contents('php://input'), true) ?? [];
+        $roomId = isset($body['room_id']) ? trim((string)$body['room_id']) : '';
+        if ($roomId === '') {
+            http_response_code(400);
+            ResponseHelper::json([
+                'error' => 'MISSING_ROOM_ID',
+                'message' => 'Missing room_id',
+            ]);
+            break;
+        }
+
         try {
-            // --- Decode Signal JWT
+            // --- Decode Signal JWT ---
             $jwtSecret = $_ENV['JWT_SECRET'] ?? 'changeme';
             $decoded = \Firebase\JWT\JWT::decode(
                 $signalJwt,
                 new \Firebase\JWT\Key($jwtSecret, 'HS256')
             );
 
-            $userId = $decoded->user_id ?? null;
-            if (!$userId) {
+            $userId = isset($decoded->user_id) ? (int)$decoded->user_id : 0;
+            if ($userId <= 0) {
                 throw new \Exception('Invalid JWT: missing user_id');
             }
 
-            // --- Input
-            $body = json_decode(file_get_contents('php://input'), true) ?? [];
-            $roomId = $body['room_id'] ?? null;
-            if (!$roomId) {
-                throw new \Exception('Missing room_id');
+            // --- Require logged-in session (giống /api/token/livekit) ---
+            $sess = $_SESSION['auth'] ?? null;
+            if (!is_array($sess) || empty($sess['user_id']) || empty($sess['signal_jwt'])) {
+                http_response_code(401);
+                ResponseHelper::json([
+                    'error' => 'LOGIN_REQUIRED',
+                    'message' => 'Session not found. Please login again.',
+                ]);
+                break;
             }
 
-            // --- Kiểm tra quyền HOST / OWNER
-            $room = RoomsRepo::getRoomById($roomId);
+            if ((int)$sess['user_id'] !== (int)$userId) {
+                http_response_code(401);
+                ResponseHelper::json([
+                    'error' => 'SESSION_MISMATCH',
+                    'message' => 'Session user mismatch. Please login again.',
+                ]);
+                break;
+            }
+
+            if (!hash_equals((string)$sess['signal_jwt'], (string)$signalJwt)) {
+                http_response_code(401);
+                ResponseHelper::json([
+                    'error' => 'TOKEN_MISMATCH',
+                    'message' => 'Token does not match current session. Please login again.',
+                ]);
+                break;
+            }
+
+            // --- DB: load room + check owner ---
+            /** @var \App\Helpers\DbHelper $db */
+            $db = require webroot_fs_path('/../app/Bootstrap/database.php');
+            $roomsRepo = new \App\Repositories\RoomsRepo($db);
+
+            $room = $roomsRepo->getRoomById($roomId);
             if (!$room) {
                 http_response_code(404);
-                ResponseHelper::json(['error' => 'Room not found']);
+                ResponseHelper::json([
+                    'error' => 'ROOM_NOT_FOUND',
+                    'message' => 'Room not found',
+                ]);
+                break;
+            }
+
+            // Nếu đã disband thì idempotent trả OK luôn (tuỳ bạn)
+            if (($room['status'] ?? '') === 'disbanded') {
+                ResponseHelper::json([
+                    'status'   => 'room_disbanded',
+                    'room_id'  => $roomId,
+                    'by_user'  => $userId,
+                    'datetime' => date('c'),
+                    'note'     => 'already_disbanded',
+                ]);
                 break;
             }
 
             if ((int)$room['owner_id'] !== (int)$userId) {
                 http_response_code(403);
-                ResponseHelper::json(['error' => 'Only room owner can disband this room']);
+                ResponseHelper::json([
+                    'error' => 'FORBIDDEN',
+                    'message' => 'Only room owner can disband this room',
+                ]);
                 break;
             }
 
-            // --- Gọi LiveKit DeleteRoom (hard destroy)
+            // --- Call LiveKit DeleteRoom (hard destroy) ---
+            $livekitHttp = trim((string)($_ENV['LIVEKIT_HTTP_URL'] ?? ''));
+            if ($livekitHttp === '') {
+                http_response_code(500);
+                ResponseHelper::json([
+                    'error' => 'LIVEKIT_HTTP_URL_NOT_CONFIGURED',
+                    'message' => 'LIVEKIT_HTTP_URL is not configured',
+                ]);
+                break;
+            }
+
             $serverJwt = $auth->generateServerApiToken(60);
-            $deleteUrl = rtrim($_ENV['LIVEKIT_HTTP_URL'], '/')
-                . '/twirp/livekit.RoomService/DeleteRoom';
+            $deleteUrl = rtrim($livekitHttp, '/') . '/twirp/livekit.RoomService/DeleteRoom';
 
             $ch = curl_init($deleteUrl);
             curl_setopt_array($ch, [
@@ -571,36 +725,52 @@ switch ($path) {
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . $serverJwt,
                 ],
-                CURLOPT_POSTFIELDS     => json_encode(['room' => $roomId]),
+                CURLOPT_POSTFIELDS     => json_encode(['room' => $roomId], JSON_UNESCAPED_SLASHES),
                 CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 10,
             ]);
 
             $resp = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr = curl_error($ch);
             curl_close($ch);
 
-            if ($httpCode >= 200 && $httpCode < 300) {
-                // (Tuỳ chọn) đánh dấu room đã bị disband trong DB
-                // RoomsRepo::markDisbanded($roomId, $userId);
-
+            if ($resp === false) {
+                http_response_code(502);
                 ResponseHelper::json([
-                    'status'   => 'room_disbanded',
-                    'room_id'  => $roomId,
-                    'by_user'  => $userId,
-                    'datetime' => date('c'),
+                    'error' => 'LIVEKIT_REQUEST_FAILED',
+                    'message' => $curlErr ?: 'LiveKit request failed',
                 ]);
-            } else {
-                http_response_code(500);
-                ResponseHelper::json([
-                    'error'  => 'LiveKit DeleteRoom failed',
-                    'detail' => $resp,
-                ]);
+                break;
             }
 
-        } catch (\Throwable $e) {
-            http_response_code(403);
+            if (($httpCode < 200 || $httpCode >= 300) && $httpCode !== 404) {
+                # 404 is acceptable: room not found on LiveKit server
+                http_response_code(502);
+                ResponseHelper::json([
+                    'error'  => 'LIVEKIT_DELETE_FAILED',
+                    'message' => 'LiveKit DeleteRoom failed',
+                    'detail' => $resp,
+                    'http_code' => $httpCode,
+                ]);
+                break;
+            }
+
+            // --- DB: mark disbanded + audit ---
+            $roomsRepo->markDisbanded($roomId, $userId);
+
             ResponseHelper::json([
-                'error'   => 'Disband room failed',
+                'status'   => 'room_disbanded',
+                'room_id'  => $roomId,
+                'by_user'  => $userId,
+                'datetime' => date('c'),
+            ]);
+
+        } catch (\Throwable $e) {
+            // JWT expired / invalid / decode errors -> 401
+            http_response_code(401);
+            ResponseHelper::json([
+                'error'   => 'Invalid or expired Signal JWT',
                 'message' => $e->getMessage(),
             ]);
         }

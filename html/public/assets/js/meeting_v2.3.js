@@ -1,7 +1,8 @@
-const LOGIN_URL = "https://app.shieldrtc.com/api/login";
-const LOGOUT_URL = "https://app.shieldrtc.com/api/logout";
-const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
-const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
+const LOGIN_URL         = "https://app.shieldrtc.com/api/login";
+const LOGOUT_URL        = "https://app.shieldrtc.com/api/logout";
+const CREATE_ROOM_URL   = "https://app.shieldrtc.com/api/rooms/create";
+const PORTAL_URL        = "https://app.shieldrtc.com/api/token/livekit";
+const DISBAND_ROOM_URL  = "https://app.shieldrtc.com/api/rooms/disband";
 
 // --- Multi-device support: allow one user to join the same room from multiple devices/tabs.
 // LiveKit requires each participant identity to be unique, so we send:
@@ -11,6 +12,14 @@ const __DEVICE_ID_KEY = 'shieldrtc_device_id';
 
 // TODO: giá trị này sẽ inject từ server sau
 let isHost = false;
+
+function disableDisbandButton() {
+  const destroyBtn = document.getElementById('destroyBtn');
+  if (!destroyBtn) return;
+  destroyBtn.disabled = true;
+  destroyBtn.setAttribute('disabled', 'disabled');
+  destroyBtn.style.display = 'none';
+}
 
 function __lkMakeId(prefix = 'id') {
   try {
@@ -2351,6 +2360,10 @@ function ensureParticipantTile(sid, name) {
     clearAuthState();
     setAccessStatus('Logged out.', 'ok');
 
+    // Reset isHost state and disband
+    isHost = false;
+    disableDisbandButton();
+
     // clear inputs
     try { document.getElementById('password').value = ''; } catch (e) {}
   }
@@ -2428,6 +2441,8 @@ bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
   // Tạo phòng
   document.getElementById("createRoomBtn").onclick = async () => {
     try {
+      const destroyBtn = document.getElementById('destroyBtn');
+
       const res = await fetch(CREATE_ROOM_URL, {
         method: "POST",
         headers: {
@@ -2444,8 +2459,24 @@ bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
         createRoomId.style.display = 'block';
         createRoomId.innerText = data.room_id;
         document.getElementById("roomId").value = data.room_id;
+
+        if (typeof data.is_host === 'boolean') {
+          isHost = data.is_host;
+        }
+
+        if (destroyBtn) {
+          if (isHost) {
+            destroyBtn.disabled = false;
+            destroyBtn.style.display = '';
+          } else {
+            destroyBtn.disabled = true;
+            destroyBtn.style.display = 'none';
+          }
+        }
       } else {
         alert("Create room failed: " + JSON.stringify(data));
+        destroyBtn.disabled = true;
+        destroyBtn.style.display = 'none';
       }
     } catch (err) {
       console.error("Create room error:", err);
@@ -2541,6 +2572,7 @@ bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
         return;
       }
 
+      console.log("Connecting to LiveKit:", data);
       // server trả về data.is_host
       if (typeof data.is_host === 'boolean') {
         isHost = data.is_host;
@@ -3197,7 +3229,7 @@ room.on('participantDisconnected', (participant) => {
       destroyBtnEl.disabled = true;
 
       try {
-        const res = await fetch("https://app.shieldrtc.com/api/rooms/disband", {
+        const res = await fetch(DISBAND_ROOM_URL, {
           method: "POST",
           headers: {
             "Authorization": "Bearer " + SIGNAL_JWT,
@@ -3229,6 +3261,12 @@ room.on('participantDisconnected', (participant) => {
       }
 
       resetCallUI();
+
+      // Reset isHost state and disband
+      isHost = false;
+      disableDisbandButton();
     };
   }
+
+  disableDisbandButton();
 });
