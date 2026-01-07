@@ -1,8 +1,7 @@
-const LOGIN_URL         = "https://app.shieldrtc.com/api/login";
-const LOGOUT_URL        = "https://app.shieldrtc.com/api/logout";
-const CREATE_ROOM_URL   = "https://app.shieldrtc.com/api/rooms/create";
-const PORTAL_URL        = "https://app.shieldrtc.com/api/token/livekit";
-const DISBAND_ROOM_URL  = "https://app.shieldrtc.com/api/rooms/disband";
+const LOGIN_URL = "https://app.shieldrtc.com/api/login";
+const LOGOUT_URL = "https://app.shieldrtc.com/api/logout";
+const CREATE_ROOM_URL = "https://app.shieldrtc.com/api/rooms/create";
+const PORTAL_URL = "https://app.shieldrtc.com/api/token/livekit";
 
 // --- Multi-device support: allow one user to join the same room from multiple devices/tabs.
 // LiveKit requires each participant identity to be unique, so we send:
@@ -12,14 +11,6 @@ const __DEVICE_ID_KEY = 'shieldrtc_device_id';
 
 // TODO: giá trị này sẽ inject từ server sau
 let isHost = false;
-
-function disableDisbandButton() {
-  const destroyBtn = document.getElementById('destroyBtn');
-  if (!destroyBtn) return;
-  destroyBtn.disabled = true;
-  destroyBtn.setAttribute('disabled', 'disabled');
-  destroyBtn.style.display = 'none';
-}
 
 function __lkMakeId(prefix = 'id') {
   try {
@@ -2035,6 +2026,20 @@ function ensureParticipantTile(sid, name) {
     });
   }
 
+// Ensure audio playback (mobile browsers may block autoplay until a user gesture).
+async function ensureRoomAudioStarted(room) {
+  if (!room) return true;
+  if (typeof room.startAudio !== 'function') return true; // older LiveKit
+  try {
+    await room.startAudio();
+    return true;
+  } catch (e) {
+    console.warn('startAudio blocked (needs user gesture):', e);
+    return false;
+  }
+}
+
+
   function updateMicUI() {
     if (!toggleMicBtn) return;
     if (toggleMicIcon) toggleMicIcon.textContent = micEnabled ? 'mic' : 'mic_off';
@@ -2360,10 +2365,6 @@ function ensureParticipantTile(sid, name) {
     clearAuthState();
     setAccessStatus('Logged out.', 'ok');
 
-    // Reset isHost state and disband
-    isHost = false;
-    disableDisbandButton();
-
     // clear inputs
     try { document.getElementById('password').value = ''; } catch (e) {}
   }
@@ -2572,7 +2573,6 @@ bindCopyIconButton(document.getElementById('copyRoomJoin'), getRoomIdForCopy);
         return;
       }
 
-      console.log("Connecting to LiveKit:", data);
       // server trả về data.is_host
       if (typeof data.is_host === 'boolean') {
         isHost = data.is_host;
@@ -2704,8 +2704,23 @@ room.on('participantDisconnected', (participant) => {
         } else if (track.kind === 'audio') {
           const el = track.attach();
           el.dataset.participant = participant.sid;
-          el.style.display = 'none';
+          el.dataset.kind = 'audio';
+          el.autoplay = true;
+          el.playsInline = true;
+          el.muted = !speakerEnabled;
+
+          // Avoid display:none on mobile Safari/WebKit (can stop audio). Keep it off-screen instead.
+          el.style.position = 'absolute';
+          el.style.left = '-9999px';
+          el.style.width = '1px';
+          el.style.height = '1px';
+          el.style.opacity = '0';
+
           document.body.appendChild(el);
+
+          // Best-effort start (some browsers need startAudio() via a user gesture).
+          const p = el.play?.();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
 
           // nếu loa đang tắt thì audio mới cũng phải tắt theo
           el.muted = !speakerEnabled;
@@ -2852,7 +2867,9 @@ room.on('participantDisconnected', (participant) => {
       // connect
       await room.connect(data.livekit_url, data.livekit_jwt);
 
-      // Topbar
+      // Try to start audio playback early (mobile browsers may still require a user gesture).
+      await ensureRoomAudioStarted(room);
+// Topbar
       try { setTopbarStatus(true, roomId); updateTopbarCount(); } catch (e) {}
       // Peer broadcast mic state so new joiners see correct mute UI (unique id; no name collision)
       try { schedulePeerHelloBurst(); } catch (e) {}
@@ -3062,7 +3079,7 @@ room.on('participantDisconnected', (participant) => {
 
   // Toggle speaker (call audio)
   if (toggleSpeakerBtn) {
-    toggleSpeakerBtn.onclick = () => {
+    toggleSpeakerBtn.onclick = async () => {
       if (!currentRoom) return;
 
       speakerEnabled = !speakerEnabled;
@@ -3070,6 +3087,11 @@ room.on('participantDisconnected', (participant) => {
 
       if (toggleSpeakerIcon) toggleSpeakerIcon.textContent = speakerEnabled ? 'volume_up' : 'volume_off';
       toggleSpeakerBtn.title = speakerEnabled ? 'Mute call audio' : 'Unmute call audio';
+
+      // Mobile browsers often need an explicit user gesture to start audio playback.
+      if (speakerEnabled) {
+        await ensureRoomAudioStarted(currentRoom);
+      }
     };
   }
 
@@ -3229,7 +3251,7 @@ room.on('participantDisconnected', (participant) => {
       destroyBtnEl.disabled = true;
 
       try {
-        const res = await fetch(DISBAND_ROOM_URL, {
+        const res = await fetch("https://app.shieldrtc.com/api/rooms/disband", {
           method: "POST",
           headers: {
             "Authorization": "Bearer " + SIGNAL_JWT,
@@ -3261,12 +3283,6 @@ room.on('participantDisconnected', (participant) => {
       }
 
       resetCallUI();
-
-      // Reset isHost state and disband
-      isHost = false;
-      disableDisbandButton();
     };
   }
-
-  disableDisbandButton();
 });
